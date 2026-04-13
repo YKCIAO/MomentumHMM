@@ -1,0 +1,53 @@
+{
+  "paths": {
+    "input_data": "data/raw/fmri_timeseries.npy",
+    "symbolic_output_root": "outputs/symbolic_search",
+    "hmm_output_root": "outputs/hmm_results",
+    "score_output_root": "outputs/score_results",
+    "figure_output_root": "outputs/figures"
+  },
+  "preprocess": {
+    "standardize_method": "robust",
+    "smooth": false,
+    "smooth_window": 3,
+    "center_diff_on_diff_series": true,
+    "fill_first_diff": "zero"
+  },
+  "symbolic": {
+    "deviation_thresholds": [0.5, 1.0],
+    "momentum_thresholds": [0.5, 1.0],
+    "alpha_values": [0.7],
+    "beta_values": [0.4],
+    "category_mode": "pair_index"
+  },
+  "hmm": {
+    "n_hidden_states_values": [4, 6],
+    "n_iter": 200,
+    "tol": 0.0001,
+    "random_state": 42,
+    "verbose": false
+  },
+  "score": {
+    "weights": {
+      "state_usage_entropy": 1.0,
+      "transition_entropy": 1.0,
+      "fo_stability": 1.0,
+      "mdt_stability": 1.0,
+      "observation_entropy": 1.0,
+      "used_state_fraction": 1.0,
+      "used_observation_fraction": 1.0
+    },
+    "normalize_scores_across_runs": true
+  },
+  "visualization": {
+    "dpi": 300,
+    "fig_format": "png",
+    "top_n_score_runs": 10,
+    "show_titles": true,
+    "save_symbolic_distribution": true,
+    "save_transition_matrix": true,
+    "save_fo_bar": true,
+    "save_mdt_bar": true,
+    "save_score_bar": true
+  }
+}
