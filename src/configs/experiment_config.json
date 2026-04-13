@@ -1,10 +1,10 @@
 {
   "paths": {
-    "input_data": "data/raw/fmri_timeseries.npy",
-    "symbolic_output_root": "outputs/symbolic_search",
-    "hmm_output_root": "outputs/hmm_results",
-    "score_output_root": "outputs/score_results",
-    "figure_output_root": "outputs/figures"
+    "input_data": "../data/raw/fmri_timeseries.npy",
+    "symbolic_output_root": "../outputs/symbolic_search",
+    "hmm_output_root": "../outputs/hmm_results",
+    "score_output_root": "../outputs/score_results",
+    "figure_output_root": "../outputs/figures"
   },
   "preprocess": {
     "standardize_method": "robust",

@@ -11,6 +11,8 @@ class PathConfig:
     input_data: str
     symbolic_output_root: str
     hmm_output_root: str
+    score_output_root: str
+    figure_output_root: str
 
 
 @dataclass
