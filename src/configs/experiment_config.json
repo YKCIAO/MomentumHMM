@@ -1,10 +1,12 @@
 {
   "paths": {
-    "input_data": "../data/raw/fmri_timeseries.npy",
+    "input_data": "../data/timeseries.npy",
     "symbolic_output_root": "../outputs/symbolic_search",
     "hmm_output_root": "../outputs/hmm_results",
     "score_output_root": "../outputs/score_results",
-    "figure_output_root": "../outputs/figures"
+    "figure_output_root": "../outputs/figures",
+    "metadata_csv": "../data/metadata.csv",
+    "dataset_npz": "../data/dataset.npz"
   },
   "preprocess": {
     "standardize_method": "robust",
@@ -21,7 +23,8 @@
     "category_mode": "pair_index"
   },
   "hmm": {
-    "n_hidden_states_values": [4, 6],
+    "n_hidden_states_values": [4, 8, 12, 16
+    ],
     "n_iter": 200,
     "tol": 0.0001,
     "random_state": 42,

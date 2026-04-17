@@ -13,6 +13,8 @@ class PathConfig:
     hmm_output_root: str
     score_output_root: str
     figure_output_root: str
+    metadata_csv: str
+    dataset_npz: str
 
 
 @dataclass

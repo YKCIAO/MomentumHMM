@@ -3,16 +3,16 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from config import ExperimentConfig
-from utils.io_utils import ensure_dir, load_npz
-from visualization.common import prepare_figure_dir, save_figure
-from visualization.hmm_plots import (
+from src.config import ExperimentConfig
+from src.utils.io_utils import ensure_dir, load_npz
+from src.visualization.common import prepare_figure_dir, save_figure
+from src.visualization.hmm_plots import (
     plot_mean_fo,
     plot_mean_mdt,
     plot_transition_matrix,
 )
-from visualization.score_plots import plot_top_score_runs
-from visualization.symbolic_plots import plot_symbolic_distribution
+from src.visualization.score_plots import plot_top_score_runs
+from src.visualization.symbolic_plots import plot_symbolic_distribution
 
 
 def visualize_all(cfg: ExperimentConfig) -> None:

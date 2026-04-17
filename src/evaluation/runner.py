@@ -4,13 +4,13 @@ from pathlib import Path
 
 import numpy as np
 
-from config import ExperimentConfig
-from evaluation.score import (
+from src.config import ExperimentConfig
+from src.evaluation.score import (
     compute_run_metrics,
     minmax_normalize_metric_table,
     weighted_score,
 )
-from utils.io_utils import ensure_dir, load_npz, save_json
+from src.utils.io_utils import ensure_dir, load_npz, save_json
 
 
 def score_all_hmm_runs(cfg: ExperimentConfig) -> None:

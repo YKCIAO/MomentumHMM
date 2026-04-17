@@ -4,7 +4,7 @@ from typing import Dict
 
 import numpy as np
 
-from evaluation.state_metrics import (
+from src.evaluation.state_metrics import (
     mean_subject_stability,
     normalize_entropy,
     observation_usage_from_sequence,
