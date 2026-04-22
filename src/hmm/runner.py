@@ -1,17 +1,18 @@
 from __future__ import annotations
-import numpy as np
+
 from datetime import datetime
 from pathlib import Path
 from concurrent.futures import ProcessPoolExecutor, as_completed
 import os
 
+import numpy as np
 import pandas as pd
 
-from src.config import ExperimentConfig
-from src.hmm.decode import decode_hmm, split_sequence_by_lengths
-from src.hmm.metrics import compute_subject_level_metrics
-from src.hmm.model import fit_hmm
-from src.utils.io_utils import ensure_dir, load_npz, save_json, save_npz
+from config import ExperimentConfig
+from hmm.decode import decode_hmm, split_sequence_by_lengths
+from hmm.metrics import compute_subject_level_metrics
+from hmm.model import fit_hmm
+from utils.io_utils import ensure_dir, load_npz, save_json, save_npz
 
 
 def log_step(message: str) -> None:
@@ -115,12 +116,21 @@ def run_single_hmm_task(
 
     out_dir = ensure_dir(hmm_root / feature_dir.name / f"K_{n_hidden_states}")
 
+    # --------------------------------------------------
+    # Save main HMM outputs
+    # --------------------------------------------------
     save_dict = {
         "startprob_": model.startprob_,
         "transmat_": model.transmat_,
         "state_sequence": decoded["state_sequence"],
         "FO": metrics["FO"],
         "MDT": metrics["MDT"],
+        "Visits": metrics["Visits"],
+        "TransitionCounts": metrics["TransitionCounts"],
+        "TransitionProbs": metrics["TransitionProbs"],
+        "NTransitions": metrics["NTransitions"],
+        "SwitchingRate": metrics["SwitchingRate"],
+        "StateEntropy": metrics["StateEntropy"],
         "lengths": lengths,
         "subject_ids": metadata_df["ID"].astype(str).to_numpy(dtype=object),
         "subject_age": metadata_df["Age"].to_numpy(),
@@ -152,6 +162,9 @@ def run_single_hmm_task(
 
     save_npz(out_dir / "hmm_results.npz", **save_dict)
 
+    # --------------------------------------------------
+    # Save subject-level CSV
+    # --------------------------------------------------
     subject_rows = []
     n_subjects = len(metadata_df)
 
@@ -162,17 +175,34 @@ def run_single_hmm_task(
             "Age": metadata_df.loc[subj_idx, "Age"],
             "Gender": metadata_df.loc[subj_idx, "Gender"],
             "sequence_length": int(lengths[subj_idx]),
+            "NTransitions": int(metrics["NTransitions"][subj_idx]),
+            "SwitchingRate": float(metrics["SwitchingRate"][subj_idx]),
+            "StateEntropy": float(metrics["StateEntropy"][subj_idx]),
         }
 
         for state_idx in range(n_hidden_states):
             row[f"FO_state_{state_idx}"] = float(metrics["FO"][subj_idx, state_idx])
             row[f"MDT_state_{state_idx}"] = float(metrics["MDT"][subj_idx, state_idx])
+            row[f"Visits_state_{state_idx}"] = int(metrics["Visits"][subj_idx, state_idx])
 
         subject_rows.append(row)
 
     subject_metrics_df = pd.DataFrame(subject_rows)
     subject_metrics_df.to_csv(out_dir / "subject_metrics.csv", index=False)
 
+    # --------------------------------------------------
+    # Save subject-level transition matrices separately
+    # --------------------------------------------------
+    save_npz(
+        out_dir / "subject_transition_matrices.npz",
+        TransitionCounts=metrics["TransitionCounts"],
+        TransitionProbs=metrics["TransitionProbs"],
+        subject_ids=metadata_df["ID"].astype(str).to_numpy(dtype=object),
+    )
+
+    # --------------------------------------------------
+    # Save meta
+    # --------------------------------------------------
     save_json(
         out_dir / "hmm_meta.json",
         {
@@ -188,6 +218,7 @@ def run_single_hmm_task(
             "n_subjects": int(len(lengths)),
             "save_posterior": bool(save_posterior),
             "subject_metrics_csv": str(out_dir / "subject_metrics.csv"),
+            "subject_transition_matrices_npz": str(out_dir / "subject_transition_matrices.npz"),
         },
     )
 
