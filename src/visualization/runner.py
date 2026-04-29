@@ -1,97 +1,192 @@
 from __future__ import annotations
 
-import json
 from pathlib import Path
+import re
+import numpy as np
+import pandas as pd
 
 from src.config import ExperimentConfig
-from src.utils.io_utils import ensure_dir, load_npz
-from src.visualization.common import prepare_figure_dir, save_figure
+from src.visualization.common import ensure_dir, set_academic_style, load_json
 from src.visualization.hmm_plots import (
-    plot_mean_fo,
-    plot_mean_mdt,
-    plot_transition_matrix,
+    plot_state_means_2d,
+    plot_fo_vs_age,
+    plot_mdt_vs_age,
+    plot_global_dynamics_vs_age,
+    plot_transition_matrices_by_age,
+    plot_transition_graph_by_age,
+    plot_visits_vs_age,
+    plot_parameter_robustness_heatmap,
+    compute_run_age_effect_summary,
 )
-from src.visualization.score_plots import plot_top_score_runs
-from src.visualization.symbolic_plots import plot_symbolic_distribution
+
+
+def _extract_k_from_dir(k_dir: Path) -> int:
+    match = re.search(r"K_(\d+)", k_dir.name)
+    if match:
+        return int(match.group(1))
+    return -1
+
+
+def _find_hmm_result_dirs(hmm_root: Path) -> list[Path]:
+    """
+    Find all directories containing hmm_results.npz and subject_metrics.csv.
+    """
+    result_dirs = []
+    for p in hmm_root.rglob("*"):
+        if not p.is_dir():
+            continue
+        if (p / "hmm_results.npz").exists() and (p / "subject_metrics.csv").exists():
+            result_dirs.append(p)
+    return sorted(result_dirs)
+
+
+def _safe_run_name(result_dir: Path, hmm_root: Path) -> str:
+    rel = result_dir.relative_to(hmm_root)
+    return "__".join(rel.parts)
+
+
+def visualize_single_hmm_result(
+    result_dir: Path,
+    fig_root: Path,
+    cfg: ExperimentConfig,
+    run_name: str,
+) -> dict:
+    """
+    Generate all Sprint 3 figures for one HMM result folder.
+    """
+    dpi = cfg.visualization.dpi
+    fig_format = cfg.visualization.fig_format
+
+    hmm_path = result_dir / "hmm_results.npz"
+    subject_csv = result_dir / "subject_metrics.csv"
+
+    hmm_npz = np.load(hmm_path, allow_pickle=True)
+    k_value = _extract_k_from_dir(result_dir)
+
+    out_dir = ensure_dir(fig_root / run_name)
+
+    title_prefix = run_name.replace("__", " / ")
+
+    # Figure 1
+    plot_state_means_2d(
+        hmm_npz=hmm_npz,
+        out_path=out_dir / f"fig01_state_means_2d.{fig_format}",
+        title=f"State Means in Activation-Trend Space\n{title_prefix}",
+        dpi=dpi,
+    )
+
+    # Figure 2
+    plot_fo_vs_age(
+        subject_metrics_csv=subject_csv,
+        out_path=out_dir / f"fig02_fo_vs_age.{fig_format}",
+        title=f"Fractional Occupancy vs Age\n{title_prefix}",
+        dpi=dpi,
+    )
+
+    # Figure 3
+    plot_mdt_vs_age(
+        subject_metrics_csv=subject_csv,
+        out_path=out_dir / f"fig03_mdt_vs_age.{fig_format}",
+        title=f"Mean Dwell Time vs Age\n{title_prefix}",
+        dpi=dpi,
+    )
+
+    # Figure 4
+    plot_global_dynamics_vs_age(
+        subject_metrics_csv=subject_csv,
+        out_path=out_dir / f"fig04_global_dynamics_vs_age.{fig_format}",
+        title=f"Global HMM Dynamics vs Age\n{title_prefix}",
+        dpi=dpi,
+    )
+
+    # Figure 5
+    plot_transition_matrices_by_age(
+        hmm_npz=hmm_npz,
+        out_path=out_dir / f"fig05_transition_matrices_by_age.{fig_format}",
+        title=f"Transition Matrices by Age Group\n{title_prefix}",
+        dpi=dpi,
+    )
+
+    # Figure 6
+    plot_transition_graph_by_age(
+        hmm_npz=hmm_npz,
+        out_path=out_dir / f"fig06_transition_graph_by_age.{fig_format}",
+        title=f"Transition Graph by Age Group\n{title_prefix}",
+        dpi=dpi,
+    )
+
+    # Figure 7
+    plot_visits_vs_age(
+        subject_metrics_csv=subject_csv,
+        out_path=out_dir / f"fig07_visits_vs_age.{fig_format}",
+        title=f"Visit Count vs Age\n{title_prefix}",
+        dpi=dpi,
+    )
+
+    # Compact age-effect summary for robustness figure
+    age_summary = compute_run_age_effect_summary(subject_csv)
+    age_summary.update({
+        "run_name": result_dir.parent.name,
+        "K": k_value,
+        "result_dir": str(result_dir),
+    })
+
+    return age_summary
 
 
 def visualize_all(cfg: ExperimentConfig) -> None:
-    fig_root = prepare_figure_dir(cfg.paths.figure_output_root)
+    """
+    Sprint 3 visualization entry.
 
-    # 1) symbolic distributions
-    if cfg.visualization.save_symbolic_distribution:
-        symbolic_root = Path(cfg.paths.symbolic_output_root)
-        for symbolic_dir in sorted([p for p in symbolic_root.iterdir() if p.is_dir()]):
-            symbolic_data = load_npz(symbolic_dir / "symbolic_outputs.npz")
-            fig = plot_symbolic_distribution(
-                symbolic_data["category_9"],
-                show_titles=cfg.visualization.show_titles,
-            )
-            save_figure(
-                fig,
-                fig_root / "symbolic" / f"{symbolic_dir.name}_symbolic_dist.{cfg.visualization.fig_format}",
-                dpi=cfg.visualization.dpi,
-            )
+    Generates 8 academic-style figures:
+        1. State means in 2D activation-trend space
+        2. FO vs Age
+        3. MDT vs Age
+        4. SwitchingRate / StateEntropy / NTransitions vs Age
+        5. Transition matrices for younger vs older subjects
+        6. Transition graph for younger vs older subjects
+        7. Visit count vs Age
+        8. Parameter robustness heatmap across runs
 
-    # 2) HMM plots
+    Each HMM result folder gets Figures 1-7.
+    Figure 8 is generated once at the root level.
+    """
+    set_academic_style(font_size=16)
+
     hmm_root = Path(cfg.paths.hmm_output_root)
-    hmm_candidate_dirs = sorted(hmm_root.glob("*/*"))
+    fig_root = ensure_dir(cfg.paths.figure_output_root)
 
-    for run_dir in hmm_candidate_dirs:
-        hmm_file = run_dir / "hmm_results.npz"
-        if not hmm_file.exists():
-            continue
+    result_dirs = _find_hmm_result_dirs(hmm_root)
+    if len(result_dirs) == 0:
+        raise FileNotFoundError(f"No HMM result folders found under: {hmm_root}")
 
-        hmm_data = load_npz(hmm_file)
+    summaries = []
 
-        if cfg.visualization.save_transition_matrix:
-            fig = plot_transition_matrix(
-                hmm_data["transmat_"],
-                show_titles=cfg.visualization.show_titles,
-            )
-            save_figure(
-                fig,
-                fig_root / "hmm" / f"{run_dir.parent.name}__{run_dir.name}__transmat.{cfg.visualization.fig_format}",
-                dpi=cfg.visualization.dpi,
-            )
+    for result_dir in result_dirs:
+        run_name = _safe_run_name(result_dir, hmm_root)
+        print(f"[Visualization] Processing: {run_name}", flush=True)
 
-        if cfg.visualization.save_fo_bar:
-            fig = plot_mean_fo(
-                hmm_data["FO"],
-                show_titles=cfg.visualization.show_titles,
+        try:
+            summary = visualize_single_hmm_result(
+                result_dir=result_dir,
+                fig_root=fig_root,
+                cfg=cfg,
+                run_name=run_name,
             )
-            save_figure(
-                fig,
-                fig_root / "hmm" / f"{run_dir.parent.name}__{run_dir.name}__FO.{cfg.visualization.fig_format}",
-                dpi=cfg.visualization.dpi,
-            )
+            summaries.append(summary)
 
-        if cfg.visualization.save_mdt_bar:
-            fig = plot_mean_mdt(
-                hmm_data["MDT"],
-                show_titles=cfg.visualization.show_titles,
-            )
-            save_figure(
-                fig,
-                fig_root / "hmm" / f"{run_dir.parent.name}__{run_dir.name}__MDT.{cfg.visualization.fig_format}",
-                dpi=cfg.visualization.dpi,
-            )
+        except Exception as e:
+            print(f"[Visualization] FAILED: {run_name} | {repr(e)}", flush=True)
 
-    # 3) score plot
-    if cfg.visualization.save_score_bar:
-        score_file = Path(cfg.paths.score_output_root) / "score_ranking.json"
-        if score_file.exists():
-            with open(score_file, "r", encoding="utf-8") as f:
-                score_json = json.load(f)
+    summary_df = pd.DataFrame(summaries)
+    summary_csv = fig_root / "age_effect_robustness_summary.csv"
+    summary_df.to_csv(summary_csv, index=False)
 
-            scored_runs = score_json["runs"]
-            fig = plot_top_score_runs(
-                scored_runs=scored_runs,
-                top_n=cfg.visualization.top_n_score_runs,
-                show_titles=cfg.visualization.show_titles,
-            )
-            save_figure(
-                fig,
-                fig_root / "score" / f"top_{cfg.visualization.top_n_score_runs}_runs.{cfg.visualization.fig_format}",
-                dpi=cfg.visualization.dpi,
-            )
+    plot_parameter_robustness_heatmap(
+        summary_df=summary_df,
+        out_path=fig_root / f"fig08_parameter_robustness_heatmap.{cfg.visualization.fig_format}",
+        title="Parameter Robustness of Age-Related HMM Effects",
+        dpi=cfg.visualization.dpi,
+    )
+
+    print(f"[Visualization] All figures saved to: {fig_root}", flush=True)
