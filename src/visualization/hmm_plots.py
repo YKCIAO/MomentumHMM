@@ -165,7 +165,7 @@ def plot_fo_vs_age(
     df = pd.read_csv(subject_metrics_csv)
     age = df["Age"].to_numpy(dtype=float)
 
-    cols = _state_columns(df, "FO_state_")
+    cols = _state_columns_filtered(df, "FO_state_", active_only=True)
     K = len(cols)
     n_rows, n_cols = _grid_shape(K)
 
@@ -214,7 +214,7 @@ def plot_mdt_vs_age(
     df = pd.read_csv(subject_metrics_csv)
     age = df["Age"].to_numpy(dtype=float)
 
-    cols = _state_columns(df, "MDT_state_")
+    cols = _state_columns_filtered(df, "MDT_state_", active_only=True)
     K = len(cols)
     n_rows, n_cols = _grid_shape(K)
 
@@ -448,7 +448,7 @@ def plot_visits_vs_age(
     df = pd.read_csv(subject_metrics_csv)
     age = df["Age"].to_numpy(dtype=float)
 
-    cols = _state_columns(df, "Visits_state_")
+    cols = _state_columns_filtered(df, "Visits_state_", active_only=True)
     K = len(cols)
     n_rows, n_cols = _grid_shape(K)
 
@@ -567,3 +567,43 @@ def compute_run_age_effect_summary(subject_metrics_csv: str | Path) -> dict:
         "best_age_r": best_r,
         "max_abs_age_r": best_abs,
     }
+def _active_state_ids_from_subject_metrics(
+    df: pd.DataFrame,
+    fo_threshold: float = 0.01,
+) -> list[int]:
+    fo_cols = _state_columns(df, "FO_state_")
+    if len(fo_cols) == 0:
+        return []
+
+    fo = df[fo_cols].to_numpy(dtype=float)
+    mean_fo = np.nanmean(fo, axis=0)
+
+    active_ids = []
+    for col, mean_val in zip(fo_cols, mean_fo):
+        state_id = int(col.split("_")[-1])
+        if np.isfinite(mean_val) and mean_val > fo_threshold:
+            active_ids.append(state_id)
+
+    return active_ids
+
+
+def _state_columns_filtered(
+    df: pd.DataFrame,
+    prefix: str,
+    active_only: bool = True,
+    fo_threshold: float = 0.01,
+) -> list[str]:
+    cols = _state_columns(df, prefix)
+
+    if not active_only:
+        return cols
+
+    active_ids = set(_active_state_ids_from_subject_metrics(df, fo_threshold))
+    filtered = []
+
+    for c in cols:
+        state_id = int(c.split("_")[-1])
+        if state_id in active_ids:
+            filtered.append(c)
+
+    return filtered
