@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from src.config import load_experiment_config
-from src.visualization.runner import visualize_all
+from config import load_experiment_config
+from visualization.runner import visualize_all
 
 
 def log_step(message: str) -> None:
@@ -18,7 +18,7 @@ def main():
     log_step("Step 2/2: Running visualization")
     visualize_all(cfg)
 
-    log_step("Finished successfully")
+    log_step("Visualization finished successfully")
 
 
 if __name__ == "__main__":

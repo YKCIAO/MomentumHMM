@@ -5,20 +5,29 @@ import numpy as np
 import pandas as pd
 
 # =========================
-# 1. 改成你的根目录
+# 1. 改成你的 2.0 representation 根目录
 # =========================
-ROOT_DIR = r"D:\CodeHome\python\MomentumHMM\outputs\symbolic_search"
-OUTPUT_EXCEL = os.path.join(ROOT_DIR, "symbolic_search_summary.xlsx")
+ROOT_DIR = r"D:\CodeHome\python\MomentumHMM\outputs\representation"
+OUTPUT_EXCEL = os.path.join(ROOT_DIR, "representation_2d_quality_summary.xlsx")
 
 
 def find_key(npz, candidates):
     for k in candidates:
-        if k in npz:
+        if k in npz.files:
             return k
     return None
 
 
-def calc_trit_stats(arr):
+def safe_scalar(npz, key, default=None):
+    if key not in npz.files:
+        return default
+    arr = npz[key]
+    if np.asarray(arr).size == 1:
+        return np.asarray(arr).item()
+    return arr
+
+
+def calc_ternary_stats(arr):
     arr = np.asarray(arr).ravel()
     total = arr.size
     if total == 0:
@@ -36,53 +45,58 @@ def calc_trit_stats(arr):
         "neg1_count": int(neg1),
         "zero_count": int(zero),
         "pos1_count": int(pos1),
-        "neg1_ratio": neg1 / total,
-        "zero_ratio": zero / total,
-        "pos1_ratio": pos1 / total,
-        "unexpected_values": str(unexpected) if len(unexpected) > 0 else ""
+        "neg1_ratio": float(neg1 / total),
+        "zero_ratio": float(zero / total),
+        "pos1_ratio": float(pos1 / total),
+        "balance_abs_diff_pos_neg": float(abs(pos1 - neg1) / total),
+        "unexpected_values": str(unexpected) if len(unexpected) > 0 else "",
     }
 
 
-def calc_category_stats(arr):
-    arr = np.asarray(arr).ravel()
-    total = arr.size
-    if total == 0:
-        return None
+def calc_x_stats(X):
+    X = np.asarray(X)
 
-    unique, counts = np.unique(arr, return_counts=True)
-    ratio_map = {int(u): c / total for u, c in zip(unique, counts)}
+    if X.ndim != 2:
+        return {
+            "X_shape": str(X.shape),
+            "X_valid": False,
+            "X_problem": "X不是二维矩阵",
+        }
 
     out = {
-        "category_total_points": int(total),
-        "category_n_present": len(unique),
-        "category_max_ratio": max(ratio_map.values())
+        "X_shape": str(X.shape),
+        "X_valid": True,
+        "X_n_timepoints_total": int(X.shape[0]),
+        "X_n_features": int(X.shape[1]),
+        "X_has_nan": bool(np.isnan(X).any()),
+        "X_has_inf": bool(np.isinf(X).any()),
     }
 
-    # 统计活跃类和稀有类
-    out["category_n_active_gt5pct"] = sum(v > 0.05 for v in ratio_map.values())
-    out["category_n_rare_lt1pct"] = sum(v < 0.01 for v in ratio_map.values())
-
-    # 每个类别单独展开
-    for u in sorted(unique):
-        out[f"cat_{int(u)}_ratio"] = ratio_map[int(u)]
+    for j in range(X.shape[1]):
+        col = X[:, j]
+        out[f"X_f{j}_mean"] = float(np.nanmean(col))
+        out[f"X_f{j}_std"] = float(np.nanstd(col))
+        out[f"X_f{j}_min"] = float(np.nanmin(col))
+        out[f"X_f{j}_max"] = float(np.nanmax(col))
+        out[f"X_f{j}_n_unique"] = int(len(np.unique(col[np.isfinite(col)])))
 
     return out
 
 
-def evaluate_deviation(dev_stats):
-    if dev_stats is None:
+def evaluate_activation(stats):
+    if stats is None:
         return "missing"
 
-    z = dev_stats["zero_ratio"]
-    n = dev_stats["neg1_ratio"]
-    p = dev_stats["pos1_ratio"]
+    z = stats["zero_ratio"]
+    n = stats["neg1_ratio"]
+    p = stats["pos1_ratio"]
 
     comments = []
 
     if z < 0.40:
-        comments.append("0太少(偏敏感)")
-    elif z > 0.80:
-        comments.append("0太多(偏迟钝)")
+        comments.append("0太少(activation阈值偏低/过敏)")
+    elif z > 0.85:
+        comments.append("0太多(activation阈值偏高/信息偏弱)")
     else:
         comments.append("0比例可接受")
 
@@ -91,23 +105,30 @@ def evaluate_deviation(dev_stats):
     else:
         comments.append("±1较平衡")
 
+    if p + n < 0.10:
+        comments.append("非零activation太少")
+    elif p + n > 0.60:
+        comments.append("非零activation偏多")
+    else:
+        comments.append("非零activation适中")
+
     return "; ".join(comments)
 
 
-def evaluate_momentum(mom_stats):
-    if mom_stats is None:
+def evaluate_trend(stats):
+    if stats is None:
         return "missing"
 
-    z = mom_stats["zero_ratio"]
-    n = mom_stats["neg1_ratio"]
-    p = mom_stats["pos1_ratio"]
+    z = stats["zero_ratio"]
+    n = stats["neg1_ratio"]
+    p = stats["pos1_ratio"]
 
     comments = []
 
     if z < 0.50:
-        comments.append("0太少(动量过敏)")
-    elif z > 0.85:
-        comments.append("0太多(动量信息偏弱)")
+        comments.append("0太少(trend阈值偏低/动量过敏)")
+    elif z > 0.90:
+        comments.append("0太多(trend阈值偏高/动量信息偏弱)")
     else:
         comments.append("0比例可接受")
 
@@ -116,42 +137,80 @@ def evaluate_momentum(mom_stats):
     else:
         comments.append("±1较平衡")
 
+    if p + n < 0.08:
+        comments.append("非零trend太少")
+    elif p + n > 0.50:
+        comments.append("非零trend偏多")
+    else:
+        comments.append("非零trend适中")
+
     return "; ".join(comments)
 
 
-def evaluate_category(cat_stats):
-    if cat_stats is None:
+def evaluate_x_stats(x_stats):
+    if x_stats is None:
         return "missing"
+
+    if not x_stats.get("X_valid", False):
+        return x_stats.get("X_problem", "X invalid")
 
     comments = []
 
-    if cat_stats["category_n_present"] <= 3:
-        comments.append("类别明显塌缩")
-    elif cat_stats["category_n_present"] >= 8:
-        comments.append("类别覆盖较广")
-    else:
-        comments.append("类别覆盖中等")
+    if x_stats["X_has_nan"]:
+        comments.append("X含NaN")
+    if x_stats["X_has_inf"]:
+        comments.append("X含Inf")
 
-    if cat_stats["category_max_ratio"] > 0.40:
-        comments.append("最大类别占比过高")
-    else:
-        comments.append("无极端dominance")
+    n_features = x_stats["X_n_features"]
 
-    if cat_stats["category_n_active_gt5pct"] < 5:
-        comments.append("活跃类别偏少")
+    if n_features == 1:
+        comments.append("单通道模型")
+    elif n_features == 2:
+        comments.append("二维joint模型")
     else:
-        comments.append("活跃类别尚可")
+        comments.append(f"异常特征数={n_features}")
+
+    low_var_channels = 0
+    for j in range(n_features):
+        std = x_stats.get(f"X_f{j}_std", np.nan)
+        n_unique = x_stats.get(f"X_f{j}_n_unique", 0)
+
+        if np.isfinite(std) and std < 1e-6:
+            low_var_channels += 1
+
+        if n_unique <= 1:
+            comments.append(f"f{j}完全塌缩")
+        elif n_unique <= 2:
+            comments.append(f"f{j}取值偏少")
+        else:
+            comments.append(f"f{j}有变化")
+
+    if low_var_channels > 0:
+        comments.append(f"{low_var_channels}个通道低方差")
+
+    if len(comments) == 0:
+        comments.append("X基本正常")
 
     return "; ".join(comments)
 
 
-def overall_recommendation(dev_eval, mom_eval, cat_eval):
-    text = " | ".join([dev_eval, mom_eval, cat_eval])
+def overall_recommendation(act_eval, trend_eval, x_eval):
+    text = " | ".join([str(act_eval), str(trend_eval), str(x_eval)])
 
-    bad = 0
-    for kw in ["偏敏感", "偏迟钝", "动量过敏", "动量信息偏弱", "类别明显塌缩", "最大类别占比过高"]:
-        if kw in text:
-            bad += 1
+    bad_keywords = [
+        "missing",
+        "过敏",
+        "信息偏弱",
+        "非零activation太少",
+        "非零trend太少",
+        "X含NaN",
+        "X含Inf",
+        "完全塌缩",
+        "低方差",
+        "异常特征数",
+    ]
+
+    bad = sum(kw in text for kw in bad_keywords)
 
     if bad == 0:
         return "较推荐"
@@ -163,21 +222,21 @@ def overall_recommendation(dev_eval, mom_eval, cat_eval):
 
 def parse_folder_params(folder_name):
     """
-    解析类似：
-    dev_0.5000__mom_1.0000__a_0.7000__b_0.4000
+    解析 2.0 文件夹名，例如：
+    act_1.0000__trend_1.1000__a_1.0000__b_1.0000
     """
     result = {
-        "deviation_threshold": None,
-        "momentum_threshold": None,
-        "a_weight": None,
-        "b_weight": None
+        "activation_threshold": None,
+        "trend_threshold": None,
+        "alpha": None,
+        "beta": None,
     }
 
     patterns = {
-        "deviation_threshold": r"dev_([0-9.]+)",
-        "momentum_threshold": r"mom_([0-9.]+)",
-        "a_weight": r"a_([0-9.]+)",
-        "b_weight": r"b_([0-9.]+)"
+        "activation_threshold": r"act_([0-9.]+)",
+        "trend_threshold": r"trend_([0-9.]+)",
+        "alpha": r"a_([0-9.]+)",
+        "beta": r"b_([0-9.]+)",
     }
 
     for key, pat in patterns.items():
@@ -188,92 +247,184 @@ def parse_folder_params(folder_name):
     return result
 
 
-def analyze_one_npz(npz_path):
-    folder_name = os.path.basename(os.path.dirname(npz_path))
+def infer_model_type(alpha, beta, feature_names=None):
+    if feature_names is not None:
+        try:
+            names = [str(x) for x in feature_names]
+            return "+".join(names)
+        except Exception:
+            pass
+
+    if alpha is not None and beta is not None:
+        if alpha > 0 and beta > 0:
+            return "activation+trend"
+        if alpha > 0 and beta == 0:
+            return "activation_only"
+        if alpha == 0 and beta > 0:
+            return "trend_only"
+
+    return "unknown"
+
+
+def analyze_one_run(folder):
+    folder_name = os.path.basename(folder)
+
     row = {
         "folder_name": folder_name,
-        "npz_path": npz_path
+        "folder_path": folder,
     }
 
     row.update(parse_folder_params(folder_name))
 
-    data = np.load(npz_path, allow_pickle=True)
+    rep_npz_path = os.path.join(folder, "representation_outputs.npz")
+    hmm_npz_path = os.path.join(folder, "hmm_ready_features.npz")
 
-    dev_key = find_key(data, ["deviation_code", "dev_code", "deviation"])
-    mom_key = find_key(data, ["momentum_code", "mom_code", "momentum"])
-    cat_key = find_key(data, ["category_9", "category", "obs_seq", "observations"])
+    row["representation_npz_path"] = rep_npz_path if os.path.exists(rep_npz_path) else ""
+    row["hmm_ready_npz_path"] = hmm_npz_path if os.path.exists(hmm_npz_path) else ""
 
-    row["deviation_key"] = dev_key if dev_key else ""
-    row["momentum_key"] = mom_key if mom_key else ""
-    row["category_key"] = cat_key if cat_key else ""
+    if not os.path.exists(rep_npz_path):
+        raise FileNotFoundError(f"Missing representation_outputs.npz: {rep_npz_path}")
 
-    dev_stats = calc_trit_stats(data[dev_key]) if dev_key else None
-    mom_stats = calc_trit_stats(data[mom_key]) if mom_key else None
-    cat_stats = calc_category_stats(data[cat_key]) if cat_key else None
+    if not os.path.exists(hmm_npz_path):
+        raise FileNotFoundError(f"Missing hmm_ready_features.npz: {hmm_npz_path}")
 
-    if dev_stats:
-        for k, v in dev_stats.items():
-            row[f"dev_{k}"] = v
+    rep = np.load(rep_npz_path, allow_pickle=True)
+    hmm = np.load(hmm_npz_path, allow_pickle=True)
 
-    if mom_stats:
-        for k, v in mom_stats.items():
-            row[f"mom_{k}"] = v
+    # 2.0 key names
+    act_key = find_key(rep, ["activation_code", "deviation_code", "dev_code"])
+    trend_key = find_key(rep, ["trend_code", "momentum_code", "mom_code"])
+    X_key = find_key(hmm, ["X"])
 
-    if cat_stats:
-        for k, v in cat_stats.items():
+    feature_names = hmm["feature_names"] if "feature_names" in hmm.files else None
+
+    # Prefer npz scalar values over folder parsing
+    for key_in_npz, key_in_row in [
+        ("activation_threshold", "activation_threshold"),
+        ("trend_threshold", "trend_threshold"),
+        ("alpha", "alpha"),
+        ("beta", "beta"),
+    ]:
+        val = safe_scalar(hmm, key_in_npz, default=None)
+        if val is not None:
+            row[key_in_row] = float(val)
+
+    row["activation_key"] = act_key if act_key else ""
+    row["trend_key"] = trend_key if trend_key else ""
+    row["X_key"] = X_key if X_key else ""
+
+    if feature_names is not None:
+        row["feature_names"] = ",".join([str(x) for x in feature_names])
+    else:
+        row["feature_names"] = ""
+
+    row["model_type"] = infer_model_type(row["alpha"], row["beta"], feature_names)
+
+    act_stats = calc_ternary_stats(rep[act_key]) if act_key else None
+    trend_stats = calc_ternary_stats(rep[trend_key]) if trend_key else None
+    x_stats = calc_x_stats(hmm[X_key]) if X_key else None
+
+    if act_stats:
+        for k, v in act_stats.items():
+            row[f"act_{k}"] = v
+
+    if trend_stats:
+        for k, v in trend_stats.items():
+            row[f"trend_{k}"] = v
+
+    if x_stats:
+        for k, v in x_stats.items():
             row[k] = v
 
-    dev_eval = evaluate_deviation(dev_stats)
-    mom_eval = evaluate_momentum(mom_stats)
-    cat_eval = evaluate_category(cat_stats)
+    act_eval = evaluate_activation(act_stats)
+    trend_eval = evaluate_trend(trend_stats)
+    x_eval = evaluate_x_stats(x_stats)
 
-    row["deviation_eval"] = dev_eval
-    row["momentum_eval"] = mom_eval
-    row["category_eval"] = cat_eval
-    row["overall_recommendation"] = overall_recommendation(dev_eval, mom_eval, cat_eval)
+    row["activation_eval"] = act_eval
+    row["trend_eval"] = trend_eval
+    row["X_eval"] = x_eval
+    row["overall_recommendation"] = overall_recommendation(act_eval, trend_eval, x_eval)
 
     return row
 
 
 def main():
-    npz_files = glob.glob(os.path.join(ROOT_DIR, "*", "symbolic_outputs.npz"))
+    run_folders = sorted([
+        f for f in glob.glob(os.path.join(ROOT_DIR, "*"))
+        if os.path.isdir(f)
+    ])
 
-    if len(npz_files) == 0:
-        print(f"没有找到 symbolic_outputs.npz: {ROOT_DIR}")
+    if len(run_folders) == 0:
+        print(f"没有找到 representation run folders: {ROOT_DIR}")
         return
 
     rows = []
-    for f in sorted(npz_files):
+    for folder in run_folders:
         try:
-            row = analyze_one_npz(f)
+            row = analyze_one_run(folder)
             rows.append(row)
-            print(f"[OK] {f}")
+            print(f"[OK] {folder}")
         except Exception as e:
-            print(f"[ERROR] {f}: {e}")
+            print(f"[ERROR] {folder}: {e}")
+
+    if len(rows) == 0:
+        print("没有成功分析任何 run。")
+        return
 
     df = pd.DataFrame(rows)
 
     priority_cols = [
         "folder_name",
-        "deviation_threshold", "momentum_threshold", "a_weight", "b_weight",
-        "dev_neg1_ratio", "dev_zero_ratio", "dev_pos1_ratio",
-        "mom_neg1_ratio", "mom_zero_ratio", "mom_pos1_ratio",
-        "category_n_present", "category_n_active_gt5pct", "category_n_rare_lt1pct",
-        "category_max_ratio",
-        "deviation_eval", "momentum_eval", "category_eval",
+        "model_type",
+        "activation_threshold",
+        "trend_threshold",
+        "alpha",
+        "beta",
+        "feature_names",
+
+        "act_neg1_ratio",
+        "act_zero_ratio",
+        "act_pos1_ratio",
+        "act_balance_abs_diff_pos_neg",
+
+        "trend_neg1_ratio",
+        "trend_zero_ratio",
+        "trend_pos1_ratio",
+        "trend_balance_abs_diff_pos_neg",
+
+        "X_shape",
+        "X_n_features",
+        "X_has_nan",
+        "X_has_inf",
+        "X_f0_mean",
+        "X_f0_std",
+        "X_f0_n_unique",
+        "X_f1_mean",
+        "X_f1_std",
+        "X_f1_n_unique",
+
+        "activation_eval",
+        "trend_eval",
+        "X_eval",
         "overall_recommendation",
-        "npz_path"
+
+        "representation_npz_path",
+        "hmm_ready_npz_path",
     ]
 
-    cols = [c for c in priority_cols if c in df.columns] + [c for c in df.columns if c not in priority_cols]
+    cols = [c for c in priority_cols if c in df.columns] + [
+        c for c in df.columns if c not in priority_cols
+    ]
     df = df[cols]
 
-    df = df.sort_values(["deviation_threshold", "momentum_threshold"], na_position="last")
+    sort_cols = [c for c in ["activation_threshold", "trend_threshold", "alpha", "beta"] if c in df.columns]
+    if sort_cols:
+        df = df.sort_values(sort_cols, na_position="last")
 
     with pd.ExcelWriter(OUTPUT_EXCEL, engine="openpyxl") as writer:
         df.to_excel(writer, index=False, sheet_name="summary")
 
-    print("\n完成。结果已保存到：")
+    print("\n完成。2.0 representation 质量检查结果已保存到：")
     print(OUTPUT_EXCEL)
 
 
