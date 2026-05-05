@@ -15,6 +15,7 @@ class PathConfig:
     figure_output_root: str
     metadata_csv: str
     dataset_npz: str
+    roi_mapping_xlsx: str = ""
 
 
 @dataclass

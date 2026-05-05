@@ -6,7 +6,8 @@
     "score_output_root": "../outputs/score",
     "figure_output_root": "../outputs/figures",
     "metadata_csv": "../your_metadata.csv",
-    "dataset_npz": "../data/dataset.npz"
+    "dataset_npz": "../data/dataset.npz",
+    "roi_mapping_xlsx": "../data/Mapping.xlsx"
   },
   "preprocess": {
     "standardize_method": "zscore",

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from pathlib import Path
-import re
 import numpy as np
 import pandas as pd
 
@@ -9,61 +8,102 @@ from config import load_experiment_config
 from utils.io_utils import ensure_dir
 
 
-# =========================
-# User settings
-# =========================
 CONFIG_PATH = "configs/experiment_config.json"
 
-# 选择你要映射的具体 HMM run
 FEATURE_RUN_NAME = "act_0.7000__trend_0.8000__a_1.0000__b_1.0000"
 K_VALUE = 6
-
 TOP_N = 15
 
 
-def load_roi_labels(n_rois: int, roi_labels_csv: Path | None = None) -> pd.DataFrame:
-    if roi_labels_csv is not None and roi_labels_csv.exists():
-        df = pd.read_csv(roi_labels_csv)
+def load_roi_mapping(n_rois: int, mapping_xlsx: Path | None = None) -> pd.DataFrame:
+    """
+    Load ROI mapping table.
 
-        if "roi_index" not in df.columns:
-            df["roi_index"] = np.arange(len(df))
+    Required/expected columns in Mapping.xlsx:
+        Label
+        Gyrus
+        subregion_name
+        region
+        exact_region
+        Yeo_7network
+        Yeo_17network
+        Yeo_7network_name
+        Yeo_17network_name
 
-        if "roi_name" not in df.columns:
-            df["roi_name"] = [f"ROI_{i}" for i in range(len(df))]
+    Important:
+        ROI index in Python is 0-based.
+        Label in atlas table is usually 1-based.
+        So roi_index = Label - 1.
+    """
+    if mapping_xlsx is not None and mapping_xlsx.exists():
+        df = pd.read_excel(mapping_xlsx)
 
-        if "network" not in df.columns:
-            df["network"] = "Unknown"
+        required = ["Label", "Gyrus", "Yeo_7network", "Yeo_7network_name"]
+        missing = [c for c in required if c not in df.columns]
+        if missing:
+            raise ValueError(f"Mapping file missing required columns: {missing}")
 
-        return df[["roi_index", "roi_name", "network"]]
+        df = df.copy()
+        df["Label"] = df["Label"].astype(int)
+        df["roi_index"] = df["Label"] - 1
+
+        optional_cols = [
+            "Gyrus",
+            "subregion_name",
+            "region",
+            "exact_region",
+            "Yeo_7network",
+            "Yeo_17network",
+            "Yeo_7network_name",
+            "Yeo_17network_name",
+        ]
+
+        for c in optional_cols:
+            if c not in df.columns:
+                df[c] = "Unknown"
+
+        df = df[
+            [
+                "roi_index",
+                "Label",
+                "Gyrus",
+                "subregion_name",
+                "region",
+                "exact_region",
+                "Yeo_7network",
+                "Yeo_17network",
+                "Yeo_7network_name",
+                "Yeo_17network_name",
+            ]
+        ]
+
+        if len(df) < n_rois:
+            print(
+                f"[Warning] Mapping file has {len(df)} rows, "
+                f"but data has {n_rois} ROIs."
+            )
+
+        return df
 
     return pd.DataFrame({
         "roi_index": np.arange(n_rois),
-        "roi_name": [f"ROI_{i}" for i in range(n_rois)],
-        "network": ["Unknown"] * n_rois,
+        "Label": np.arange(1, n_rois + 1),
+        "Gyrus": [f"ROI_{i}" for i in range(n_rois)],
+        "subregion_name": ["Unknown"] * n_rois,
+        "region": ["Unknown"] * n_rois,
+        "exact_region": ["Unknown"] * n_rois,
+        "Yeo_7network": ["Unknown"] * n_rois,
+        "Yeo_17network": ["Unknown"] * n_rois,
+        "Yeo_7network_name": ["Unknown"] * n_rois,
+        "Yeo_17network_name": ["Unknown"] * n_rois,
     })
 
 
-def infer_representation_dir(cfg, feature_run_name: str) -> Path:
-    return Path(cfg.paths.symbolic_output_root) / feature_run_name
-
-
-def infer_hmm_result_dir(cfg, feature_run_name: str, k_value: int) -> Path:
-    return Path(cfg.paths.hmm_output_root) / feature_run_name / f"K_{k_value}"
-
-
-def infer_roi_labels_csv(cfg) -> Path | None:
-    """
-    Optional config support.
-
-    If you later add this field to config:
-        "roi_labels_csv": "../data/roi_labels.csv"
-
-    under paths, this function will use it automatically.
-    """
-    roi_labels = getattr(cfg.paths, "roi_labels_csv", None)
-    if roi_labels is None or str(roi_labels).strip() == "":
+def infer_mapping_xlsx(cfg) -> Path | None:
+    mapping = getattr(cfg.paths, "roi_mapping_xlsx", "")
+    if mapping is None or str(mapping).strip() == "":
         return None
-    return Path(roi_labels)
+    return Path(mapping)
 
 
 def compute_state_roi_mapping(
@@ -72,8 +112,8 @@ def compute_state_roi_mapping(
     k_value: int,
     top_n: int = 15,
 ):
-    representation_dir = infer_representation_dir(cfg, feature_run_name)
-    hmm_result_dir = infer_hmm_result_dir(cfg, feature_run_name, k_value)
+    representation_dir = Path(cfg.paths.symbolic_output_root) / feature_run_name
+    hmm_result_dir = Path(cfg.paths.hmm_output_root) / feature_run_name / f"K_{k_value}"
 
     representation_path = representation_dir / "representation_outputs.npz"
     hmm_results_path = hmm_result_dir / "hmm_results.npz"
@@ -96,9 +136,6 @@ def compute_state_roi_mapping(
     n_subjects, n_rois, n_timepoints = activation_code.shape
     K = hmm["FO"].shape[1]
 
-    if K != k_value:
-        print(f"[Warning] K from file = {K}, but requested K = {k_value}")
-
     expected_len = n_subjects * n_rois * n_timepoints
     if len(state_sequence) != expected_len:
         raise ValueError(
@@ -106,8 +143,8 @@ def compute_state_roi_mapping(
             f"expected {expected_len}. Please check flattening order."
         )
 
-    roi_labels_csv = infer_roi_labels_csv(cfg)
-    roi_df = load_roi_labels(n_rois, roi_labels_csv)
+    mapping_xlsx = infer_mapping_xlsx(cfg)
+    roi_df = load_roi_mapping(n_rois=n_rois, mapping_xlsx=mapping_xlsx)
 
     state_3d = state_sequence.reshape(n_subjects, n_rois, n_timepoints)
 
@@ -153,18 +190,34 @@ def compute_state_roi_mapping(
                 zero_trend_ratio = np.nan
 
             label_row = roi_df.loc[roi_df["roi_index"] == roi]
+
             if len(label_row) == 0:
-                roi_name = f"ROI_{roi}"
-                network = "Unknown"
+                label_info = {
+                    "Label": roi + 1,
+                    "Gyrus": f"ROI_{roi}",
+                    "subregion_name": "Unknown",
+                    "region": "Unknown",
+                    "exact_region": "Unknown",
+                    "Yeo_7network": "Unknown",
+                    "Yeo_17network": "Unknown",
+                    "Yeo_7network_name": "Unknown",
+                    "Yeo_17network_name": "Unknown",
+                }
             else:
-                roi_name = label_row.iloc[0]["roi_name"]
-                network = label_row.iloc[0]["network"]
+                label_info = label_row.iloc[0].to_dict()
 
             rows.append({
                 "state": state_id,
                 "roi_index": roi,
-                "roi_name": roi_name,
-                "network": network,
+                "Label": label_info["Label"],
+                "Gyrus": label_info["Gyrus"],
+                "subregion_name": label_info["subregion_name"],
+                "region": label_info["region"],
+                "exact_region": label_info["exact_region"],
+                "Yeo_7network": label_info["Yeo_7network"],
+                "Yeo_17network": label_info["Yeo_17network"],
+                "Yeo_7network_name": label_info["Yeo_7network_name"],
+                "Yeo_17network_name": label_info["Yeo_17network_name"],
 
                 "state_roi_occupancy": occupancy,
                 "n_points": n_points,
@@ -220,7 +273,22 @@ def compute_state_roi_mapping(
 
     network_summary = (
         full_df
-        .groupby(["state", "network"], as_index=False)
+        .groupby(["state", "Yeo_7network", "Yeo_7network_name"], as_index=False)
+        .agg(
+            mean_state_roi_occupancy=("state_roi_occupancy", "mean"),
+            max_state_roi_occupancy=("state_roi_occupancy", "max"),
+            mean_abs_activation=("abs_mean_activation", "mean"),
+            mean_abs_trend=("abs_mean_trend", "mean"),
+            mean_activation=("mean_activation", "mean"),
+            mean_trend=("mean_trend", "mean"),
+            n_rois=("roi_index", "count"),
+        )
+        .sort_values(["state", "mean_state_roi_occupancy"], ascending=[True, False])
+    )
+
+    gyrus_summary = (
+        full_df
+        .groupby(["state", "Gyrus"], as_index=False)
         .agg(
             mean_state_roi_occupancy=("state_roi_occupancy", "mean"),
             max_state_roi_occupancy=("state_roi_occupancy", "max"),
@@ -236,7 +304,8 @@ def compute_state_roi_mapping(
     top_occ_df.to_csv(output_dir / "top_occupancy_rois_per_state.csv", index=False)
     top_act_df.to_csv(output_dir / "top_activation_rois_per_state.csv", index=False)
     top_trend_df.to_csv(output_dir / "top_trend_rois_per_state.csv", index=False)
-    network_summary.to_csv(output_dir / "state_network_summary.csv", index=False)
+    network_summary.to_csv(output_dir / "state_yeo7network_summary.csv", index=False)
+    gyrus_summary.to_csv(output_dir / "state_gyrus_summary.csv", index=False)
 
     excel_path = output_dir / "state_roi_mapping_summary.xlsx"
     with pd.ExcelWriter(excel_path, engine="openpyxl") as writer:
@@ -244,15 +313,15 @@ def compute_state_roi_mapping(
         top_occ_df.to_excel(writer, index=False, sheet_name="top_occupancy")
         top_act_df.to_excel(writer, index=False, sheet_name="top_activation")
         top_trend_df.to_excel(writer, index=False, sheet_name="top_trend")
-        network_summary.to_excel(writer, index=False, sheet_name="network_summary")
+        network_summary.to_excel(writer, index=False, sheet_name="yeo7_network_summary")
+        gyrus_summary.to_excel(writer, index=False, sheet_name="gyrus_summary")
 
     print("Done.")
-    print(f"HMM result: {hmm_results_path}")
-    print(f"Representation: {representation_path}")
+    print(f"Mapping file: {mapping_xlsx}")
     print(f"Output dir: {output_dir}")
     print(f"Excel summary: {excel_path}")
 
-    return full_df, top_occ_df, top_act_df, top_trend_df, network_summary
+    return full_df, top_occ_df, top_act_df, top_trend_df, network_summary, gyrus_summary
 
 
 def main():
