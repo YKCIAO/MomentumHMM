@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import numpy as np
 
-from config import ExperimentConfig
-from representation.runner import exhaustive_representation_search as run_representation_search
+from src.config import ExperimentConfig
+from src.representation.runner import exhaustive_representation_search as run_representation_search
 
 
 def build_gaussian_2d_representation_wrapper(

@@ -8,11 +8,11 @@ import os
 import numpy as np
 import pandas as pd
 
-from config import ExperimentConfig
-from hmm.decode import decode_hmm, split_sequence_by_lengths
-from hmm.metrics import compute_subject_level_metrics
-from hmm.model import fit_hmm
-from utils.io_utils import ensure_dir, load_npz, save_json, save_npz
+from src.config import ExperimentConfig
+from src.hmm.decode import decode_hmm, split_sequence_by_lengths
+from src.hmm.metrics import compute_subject_level_metrics
+from src.hmm.model import fit_hmm
+from src.utils.io_utils import ensure_dir, load_npz, save_json, save_npz
 
 
 def log_step(message: str) -> None:

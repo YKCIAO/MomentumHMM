@@ -36,8 +36,8 @@ class RepresentationConfig:
     trend_thresholds: List[float]
     alpha_values: List[float]
     beta_values: List[float]
-    activation_encoding: Literal["ternary"]
-    trend_encoding: Literal["ternary"]
+    activation_encoding: Literal["ternary", "continuous"]
+    trend_encoding: Literal["ternary", "continuous"]
     feature_standardize: bool = False
 
 
