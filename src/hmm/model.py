@@ -178,7 +178,7 @@ def fit_hmm(
             params="ste",
         )
         model.fit(obs, lengths=lengths)
-        return model
+        return model, obs
 
     if emission_type == "gaussian":
         return fit_symbolic_gaussian_hmm(
@@ -192,6 +192,6 @@ def fit_hmm(
             verbose=verbose,
             self_prob=0.85,
             min_covar=1e-2,
-        )
+        ), X
 
     raise ValueError(f"Unknown emission_type: {emission_type}")

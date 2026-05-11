@@ -90,7 +90,7 @@ def run_single_hmm_task(
     lengths = feature_data["lengths"]
     feature_names = feature_data.get("feature_names", [])
 
-    model = fit_hmm(
+    model, hmm_obs = fit_hmm(
         X=X,
         lengths=lengths,
         n_hidden_states=n_hidden_states,
@@ -102,7 +102,7 @@ def run_single_hmm_task(
         verbose=hmm_cfg["verbose"],
     )
 
-    decoded = decode_hmm(model, X, lengths)
+    decoded = decode_hmm(model, hmm_obs, lengths)
 
     subject_state_seqs = split_sequence_by_lengths(
         decoded["state_sequence"],
