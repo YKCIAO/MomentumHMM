@@ -156,10 +156,17 @@ def fit_hmm(
             obs = X.reshape(-1, 1)
         elif X.ndim == 2 and X.shape[1] == 1:
             obs = X
+        elif X.ndim == 2 and X.shape[1] == 2:
+            obs = X.sum(axis=1, keepdims=True)
         else:
-            raise ValueError(f"Categorical HMM expects [T] or [T,1], got {X.shape}")
+            raise ValueError(f"Categorical HMM expects [T,1] or [T,2], got {X.shape}")
 
-        obs = obs.astype(np.int32, copy=False)
+        unique_vals, inv = np.unique(obs, return_inverse=True)
+        obs = inv.reshape(-1, 1).astype(np.int32)
+        print("obs.shape =", obs.shape)
+        print("obs.dtype =", obs.dtype)
+        print("obs[:100] =", obs[:100].ravel())
+        print("unique dtype kind =", obs.dtype.kind)
 
         model = CategoricalHMM(
             n_components=n_hidden_states,
