@@ -5,7 +5,7 @@
     "hmm_output_root": "../outputs/hmm",
     "score_output_root": "../outputs/score",
     "figure_output_root": "../outputs/figures",
-    "metadata_csv": "../your_metadata.csv",
+    "metadata_csv": "../data/metadata.csv",
     "dataset_npz": "../data/dataset.npz",
     "roi_mapping_xlsx": "../data/Mapping.xlsx"
   },
@@ -17,21 +17,21 @@
     "fill_first_diff": "zero"
   },
   "representation": {
-    "mode": "gaussian_2d",
+    "mode": "categorical_legacy",
     "use_activation": true,
     "use_trend": false,
     "activation_thresholds": [0.6, 0.7, 0.8],
     "trend_thresholds": [0.6, 0.7, 0.8],
     "alpha_values": [1.0],
     "beta_values": [1.0],
-    "activation_encoding": "continuous",
+    "activation_encoding": "ternary",
     "trend_encoding": "ternary",
     "feature_standardize": false
   },
   "hmm": {
-    "emission_type": "gaussian",
+    "emission_type": "categorical",
     "covariance_type": "full",
-    "n_hidden_states_values": [4, 5, 6, 7],
+    "n_hidden_states_values": [7],
     "n_iter": 200,
     "tol": 0.0001,
     "random_state": 128,

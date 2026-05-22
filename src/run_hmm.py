@@ -16,7 +16,7 @@ def main():
     cfg = load_experiment_config("configs/experiment_config.json")
 
     log_step("Step 2/2: Running HMM")
-    fit_all_hmm_runs_parallel(cfg, max_workers=3, save_posterior=True)
+    fit_all_hmm_runs_parallel(cfg, max_workers=6, save_posterior=True)
 
     log_step("Finished successfully")
 

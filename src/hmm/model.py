@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import numpy as np
 from hmmlearn.hmm import GaussianHMM, CategoricalHMM
+import pandas as pd
 
 
 def _make_sticky_transmat(K: int, self_prob: float = 0.85) -> np.ndarray:
@@ -161,12 +162,28 @@ def fit_hmm(
         else:
             raise ValueError(f"Categorical HMM expects [T,1] or [T,2], got {X.shape}")
 
+        # Re-map original symbols to consecutive integer labels
         unique_vals, inv = np.unique(obs, return_inverse=True)
         obs = inv.reshape(-1, 1).astype(np.int32)
+
         print("obs.shape =", obs.shape)
         print("obs.dtype =", obs.dtype)
         print("obs[:100] =", obs[:100].ravel())
         print("unique dtype kind =", obs.dtype.kind)
+
+        # Count re-mapped symbols
+        symbols, counts = np.unique(obs, return_counts=True)
+
+        count_table = pd.DataFrame({
+            "remapped_symbol": symbols,
+            "original_symbol": unique_vals[symbols],
+            "count": counts
+        })
+
+        count_table["percentage"] = count_table["count"] / count_table["count"].sum() * 100
+
+        print("\nSymbol count table:")
+        print(count_table)
 
         model = CategoricalHMM(
             n_components=n_hidden_states,
