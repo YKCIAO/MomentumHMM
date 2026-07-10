@@ -4,6 +4,7 @@ import numpy as np
 
 from src.preprocessing.differencing import first_difference
 from src.preprocessing.smoothing import smooth_timeseries
+from src.preprocessing.Downsampling import temporal_block_average_timeseries
 from src.preprocessing.standardization import standardize_timeseries
 from src.utils.validation import ensure_3d, validate_threshold
 
@@ -76,6 +77,9 @@ def build_gaussian_2d_representation(
     standardize_method: str,
     smooth: bool,
     smooth_window: int,
+    temporal_pool: bool,
+    temporal_pool_window: int,
+    temporal_pool_drop_remainder: bool,
     center_diff_on_diff_series: bool,
     fill_first_diff: str,
     activation_threshold: float | None,
@@ -121,9 +125,32 @@ def build_gaussian_2d_representation(
     validate_channel_weights(alpha, beta, use_activation, use_trend)
 
     x = ensure_3d(data)
+    original_timepoints = x.shape[2]
 
     if smooth:
         x = smooth_timeseries(x, smooth_window)
+        print(
+            f"[Preprocessing] Moving-average smoothing: "
+            f"window={smooth_window}, "
+            f"timepoints {original_timepoints} -> {x.shape[2]}",
+            flush=True,
+        )
+
+    if temporal_pool:
+        before_pool_timepoints = x.shape[2]
+
+        x = temporal_block_average_timeseries(
+            x,
+            window=temporal_pool_window,
+            drop_remainder=temporal_pool_drop_remainder,
+        )
+
+        print(
+            f"[Preprocessing] Temporal block averaging: "
+            f"window={temporal_pool_window}, "
+            f"timepoints {before_pool_timepoints} -> {x.shape[2]}",
+            flush=True,
+        )
 
     # continuous activation feature
     x_std = standardize_timeseries(x, standardize_method)
@@ -213,4 +240,7 @@ def build_gaussian_2d_representation(
         "n_rois": x.shape[1],
         "n_timepoints": x.shape[2],
         "n_features": X.shape[1],
+        "temporal_pool": np.asarray([temporal_pool], dtype=object),
+        "temporal_pool_window": np.asarray([temporal_pool_window], dtype=np.int32),
+        "temporal_pool_drop_remainder": np.asarray([temporal_pool_drop_remainder], dtype=object),
     }

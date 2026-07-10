@@ -23,6 +23,9 @@ class PreprocessConfig:
     standardize_method: Literal["zscore", "robust"]
     smooth: bool
     smooth_window: int
+    temporal_pool: bool
+    temporal_pool_window: int
+    temporal_pool_drop_remainder: bool
     center_diff_on_diff_series: bool
     fill_first_diff: Literal["zero", "repeat"]
 
