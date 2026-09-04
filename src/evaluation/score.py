@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Dict
 
 import numpy as np
+from scipy.stats import pearsonr
 
 from src.evaluation.state_metrics import (
     mean_subject_stability,
@@ -47,7 +48,79 @@ def compute_run_metrics(
     }
     return metrics
 
+def compute_age_relevance_score(
+    age: np.ndarray,
+    FO: np.ndarray,
+    MDT: np.ndarray,
+    top_k: int = 3,
+) -> tuple[float, dict]:
 
+    age = np.asarray(age, dtype=np.float64)
+
+    fo_r = []
+    mdt_r = []
+
+    for state_idx in range(FO.shape[1]):
+
+        # ---------- FO ----------
+        fo_values = FO[:, state_idx]
+
+        if np.std(fo_values) > 1e-12:
+            r_fo, _ = pearsonr(
+                age,
+                fo_values,
+            )
+        else:
+            r_fo = 0.0
+
+        fo_r.append(float(r_fo))
+
+        # ---------- MDT ----------
+        mdt_values = MDT[:, state_idx]
+        valid = np.isfinite(mdt_values) & (mdt_values > 0)
+        if valid.sum() >= 4 and np.std(mdt_values[valid]) > 1e-12:
+
+            r_mdt, _ = pearsonr(
+                age[valid],
+                mdt_values[valid],
+            )
+        else:
+            r_mdt = 0.0
+
+        mdt_r.append(float(r_mdt))
+
+    abs_effects = np.abs(
+        np.concatenate([
+            np.asarray(fo_r),
+            np.asarray(mdt_r),
+        ])
+    )
+
+    n_top = min(
+        top_k,
+        len(abs_effects),
+    )
+
+    if n_top == 0:
+        age_score = 0.0
+        top_effects = np.array([])
+    else:
+        top_effects = np.sort(
+            abs_effects
+        )[-n_top:]
+
+        age_score = float(
+            np.mean(top_effects)
+        )
+
+    details = {
+        "fo_age_r": fo_r,
+        "mdt_age_r": mdt_r,
+        "top_effects": top_effects.tolist(),
+        "top_k": int(n_top),
+    }
+
+    return age_score, details
 def weighted_score(
     metrics: Dict[str, float],
     weights: Dict[str, float],

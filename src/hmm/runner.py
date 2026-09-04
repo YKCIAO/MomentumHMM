@@ -92,6 +92,9 @@ def run_single_hmm_task(
     metadata_df = pd.DataFrame(metadata_records)
 
     symbolic_data = load_npz(symbolic_dir / "hmm_ready_sequence.npz")
+    sequence_subject_ids = symbolic_data["sequence_subject_ids"]
+    sequence_roi_ids = symbolic_data["sequence_roi_ids"]
+
     obs = symbolic_data["obs"]
     lengths = symbolic_data["lengths"]
 
@@ -107,13 +110,20 @@ def run_single_hmm_task(
 
     decoded = decode_hmm(model, obs, lengths)
 
-    subject_state_seqs = split_sequence_by_lengths(
+    subject_roi_state_seqs = split_sequence_by_lengths(
         decoded["state_sequence"],
         lengths,
     )
 
+    n_subjects = len(metadata_df)
+    n_rois = int(sequence_roi_ids.max()) + 1
+
     metrics = compute_subject_level_metrics(
-        subject_state_seqs=subject_state_seqs,
+        state_seqs=subject_roi_state_seqs,
+        sequence_subject_ids=sequence_subject_ids,
+        sequence_roi_ids=sequence_roi_ids,
+        n_subjects=n_subjects,
+        n_rois=n_rois,
         n_hidden_states=n_hidden_states,
     )
 
@@ -128,6 +138,9 @@ def run_single_hmm_task(
         "FO": metrics["FO"],
         "MDT": metrics["MDT"],
         "lengths": lengths,
+        "sequence_subject_ids": sequence_subject_ids,
+        "sequence_roi_ids": sequence_roi_ids,
+        "FO_roi": metrics["FO_roi"],
         "subject_ids": metadata_df["ID"].astype(str).to_numpy(dtype=object),
         "subject_age": metadata_df["Age"].to_numpy(),
         "subject_gender": metadata_df["Gender"].astype(str).to_numpy(dtype=object),
@@ -144,12 +157,20 @@ def run_single_hmm_task(
     n_subjects = len(metadata_df)
 
     for subj_idx in range(n_subjects):
+        subject_sequence_mask = (
+                sequence_subject_ids == subj_idx
+        )
+
+        subject_total_timepoints = int(
+            lengths[subject_sequence_mask].sum()
+        )
         row = {
             "subject_index": subj_idx,
             "ID": str(metadata_df.loc[subj_idx, "ID"]),
             "Age": metadata_df.loc[subj_idx, "Age"],
             "Gender": metadata_df.loc[subj_idx, "Gender"],
-            "sequence_length": int(lengths[subj_idx]),
+            "total_timepoints": subject_total_timepoints,
+            "n_roi_sequences": int(subject_sequence_mask.sum()),
         }
 
         for state_idx in range(n_hidden_states):
@@ -172,7 +193,10 @@ def run_single_hmm_task(
             "random_state": hmm_cfg["random_state"],
             "verbose": hmm_cfg["verbose"],
             "logprob": float(decoded["logprob"]),
-            "n_subjects": int(len(lengths)),
+            "n_subjects": int(len(metadata_df)),
+            "n_sequences": int(len(lengths)),
+            "n_rois": int(n_rois),
+            "sequence_unit": "subject_roi",
             "save_posterior": bool(save_posterior),
             "subject_metrics_csv": str(out_dir / "subject_metrics.csv"),
         },
@@ -203,9 +227,21 @@ def fit_all_hmm_runs_parallel(
 
     # We need one sample lengths first to verify metadata count.
     first_symbolic_data = load_npz(symbolic_dirs[0] / "hmm_ready_sequence.npz")
-    first_lengths = first_symbolic_data["lengths"]
 
-    metadata_df = load_subject_metadata(cfg, n_subjects_expected=len(first_lengths))
+    first_subject_ids = first_symbolic_data[
+        "sequence_subject_ids"
+    ]
+
+    n_subjects_expected = (
+            int(first_subject_ids.max()) + 1
+    )
+
+    metadata_df = load_subject_metadata(
+        cfg,
+        n_subjects_expected=n_subjects_expected,
+    )
+
+
     metadata_records = metadata_df.to_dict(orient="records")
     log_step(f"Subject metadata loaded successfully: {len(metadata_df)} subjects")
 

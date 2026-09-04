@@ -7,6 +7,7 @@ import numpy as np
 from src.config import ExperimentConfig
 from src.evaluation.score import (
     compute_run_metrics,
+    compute_age_relevance_score,
     minmax_normalize_metric_table,
     weighted_score,
 )
@@ -53,11 +54,19 @@ def score_all_hmm_runs(cfg: ExperimentConfig) -> None:
             n_hidden_states=n_hidden_states,
             n_categories=9,
         )
-
+        age = hmm_data["subject_age"]
+        age_score, age_details = compute_age_relevance_score(
+            age=age,
+            FO=FO,
+            MDT=MDT,
+            top_k=cfg.score.age_top_k,
+        )
         run_info = {
             "run_dir": str(run_dir),
             "symbolic_dir": str(symbolic_dir),
             "n_hidden_states": int(n_hidden_states),
+            "age_score": float(age_score),
+            "age_details": age_details,
         }
 
         run_records.append(run_info)
@@ -72,15 +81,32 @@ def score_all_hmm_runs(cfg: ExperimentConfig) -> None:
         metric_rows_for_scoring = metric_rows
 
     scored_runs = []
-    for run_info, raw_metrics, norm_metrics in zip(run_records, metric_rows, metric_rows_for_scoring):
-        final_score = weighted_score(norm_metrics, cfg.score.weights)
+    for run_info, raw_metrics, norm_metrics in zip(
+            run_records,
+            metric_rows,
+            metric_rows_for_scoring,
+    ):
+        quality_score = weighted_score(
+            norm_metrics,
+            cfg.score.weights,
+        )
+
+        age_score = run_info["age_score"]
+
+        final_score = (
+                cfg.score.quality_weight * quality_score
+                +
+                cfg.score.age_weight * age_score
+        )
 
         scored_runs.append(
             {
                 **run_info,
                 "raw_metrics": raw_metrics,
                 "normalized_metrics": norm_metrics,
-                "final_score": final_score,
+                "quality_score": float(quality_score),
+                "age_score": float(age_score),
+                "final_score": float(final_score),
             }
         )
 

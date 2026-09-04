@@ -47,6 +47,9 @@ class HMMConfig:
 class ScoreConfig:
     weights: Dict[str, float]
     normalize_scores_across_runs: bool
+    quality_weight: float
+    age_weight: float
+    age_top_k: int
 
 @dataclass
 class VisualizationConfig:
