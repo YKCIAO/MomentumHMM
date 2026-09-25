@@ -9,18 +9,15 @@
     "dataset_npz": "../data/dataset.npz"
   },
   "preprocess": {
-    "standardize_method": "robust",
-    "smooth": false,
+    "standardize_method": "zscore",
+    "smooth": true,
     "smooth_window": 3,
     "center_diff_on_diff_series": true,
     "fill_first_diff": "zero"
   },
   "symbolic": {
     "deviation_thresholds": [0.6, 0.7, 0.8, 0.9, 1.0],
-    "momentum_thresholds": [0.6, 0.7, 0.8, 0.9, 1.0],
-    "alpha_values": [3],
-    "beta_values": [1],
-    "category_mode": "pair_index"
+    "momentum_thresholds": [0.6, 0.7, 0.8, 0.9, 1.0]
   },
   "hmm": {
     "n_hidden_states_values": [5, 6, 7,8,9],
@@ -32,19 +29,20 @@
   "score": {
     "weights": {
         "state_usage_entropy": 1.0,
-        "transition_entropy": 1.0,
-        "fo_stability": 1.0,
-        "mdt_stability": 1.0,
         "observation_entropy": 1.0,
-        "used_state_fraction": 1.0,
-        "used_observation_fraction": 1.0
+        "used_observation_fraction": 1.0,
+        "effective_state_fraction": 1.5,
+        "non_fragmented_state_fraction": 2.0
     },
 
     "normalize_scores_across_runs": true,
 
     "quality_weight": 0.8,
     "age_weight": 0.2,
-    "age_top_k": 3
+    "age_top_k": 3,
+
+    "min_state_fo": 0.01,
+    "short_mdt_threshold": 1.5
   },
   "visualization": {
     "dpi": 300,

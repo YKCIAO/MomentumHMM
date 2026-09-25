@@ -30,9 +30,6 @@ class PreprocessConfig:
 class SymbolicConfig:
     deviation_thresholds: List[float]
     momentum_thresholds: List[float]
-    alpha_values: List[float]
-    beta_values: List[float]
-    category_mode: Literal["pair_index", "weighted_rank"]
 
 
 @dataclass
@@ -47,9 +44,13 @@ class HMMConfig:
 class ScoreConfig:
     weights: Dict[str, float]
     normalize_scores_across_runs: bool
+
     quality_weight: float
     age_weight: float
     age_top_k: int
+
+    min_state_fo: float
+    short_mdt_threshold: float
 
 @dataclass
 class VisualizationConfig:

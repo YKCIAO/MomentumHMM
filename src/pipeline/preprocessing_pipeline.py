@@ -9,11 +9,7 @@ from src.config import ExperimentConfig
 from src.preprocessing.differencing import first_difference
 from src.preprocessing.smoothing import smooth_timeseries
 from src.preprocessing.standardization import standardize_timeseries
-from src.symbolic.encoding import (
-    compute_weighted_values,
-    pair_to_fixed_category,
-    weighted_values_to_rank_category,
-)
+from src.symbolic.encoding import pair_to_fixed_category
 from src.symbolic.sequence_builder import flatten_subject_roi_as_observation_sequence
 from src.symbolic.thresholding import trinarize
 from src.utils.io_utils import ensure_dir, save_json, save_npz
@@ -29,13 +25,9 @@ def build_symbolic_representation(
     fill_first_diff: str,
     deviation_threshold: float,
     momentum_threshold: float,
-    alpha: float,
-    beta: float,
-    category_mode: str,
 ) -> dict:
     validate_threshold(deviation_threshold)
     validate_threshold(momentum_threshold)
-    validate_alpha_beta(alpha, beta)
 
     x = ensure_3d(data)
 
@@ -51,52 +43,40 @@ def build_symbolic_representation(
     else:
         dx_std = dx
 
-    deviation_code = trinarize(x_std, deviation_threshold)
-    momentum_code = trinarize(dx_std, momentum_threshold)
+    deviation_code = trinarize(
+        x_std,
+        deviation_threshold,
+    )
 
-    if category_mode == "pair_index":
+    momentum_code = trinarize(
+        dx_std,
+        momentum_threshold,
+    )
 
-        category_9 = pair_to_fixed_category(
-            deviation_code,
-            momentum_code,
-        )
+    category_9 = pair_to_fixed_category(
+        deviation_code,
+        momentum_code,
+    )
 
-        weighted_values = None
-        weighted_value_map = {}
-
-    elif category_mode == "weighted_rank":
-
-        weighted_values = compute_weighted_values(
-            deviation_code=deviation_code,
-            momentum_code=momentum_code,
-            alpha=alpha,
-            beta=beta,
-        )
-
-        category_9, weighted_value_map = (
-            weighted_values_to_rank_category(
-                weighted_values
-            )
-        )
-
-    (   obs,
+    (
+        obs,
         lengths,
         sequence_subject_ids,
         sequence_roi_ids,
-    ) = flatten_subject_roi_as_observation_sequence(category_9)
+    ) = flatten_subject_roi_as_observation_sequence(
+        category_9
+    )
 
     return {
         "x_std": x_std,
         "dx_std": dx_std,
         "deviation_code": deviation_code,
         "momentum_code": momentum_code,
-        "weighted_values": weighted_values,
         "category_9": category_9,
         "obs": obs,
         "lengths": lengths,
         "sequence_subject_ids": sequence_subject_ids,
         "sequence_roi_ids": sequence_roi_ids,
-        "weighted_value_map": weighted_value_map,
     }
 
 
@@ -127,9 +107,6 @@ def exhaustive_symbolic_search(
                 fill_first_diff=cfg.preprocess.fill_first_diff,
                 deviation_threshold=deviation_threshold,
                 momentum_threshold=momentum_threshold,
-                alpha=1.0,
-                beta=1.0,
-                category_mode="pair_index",
             )
 
             save_npz(
@@ -152,7 +129,7 @@ def exhaustive_symbolic_search(
             meta = {
                 "preprocess": asdict(cfg.preprocess),
                 "symbolic": {
-                    "category_mode": "pair_index",
+                    "category_mode": "deviation_momentum_pair_index",
                     "deviation_threshold": deviation_threshold,
                     "momentum_threshold": momentum_threshold,
                 },

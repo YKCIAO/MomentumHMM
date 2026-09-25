@@ -17,6 +17,16 @@ def compute_subject_level_metrics(
         dtype=np.float64,
     )
 
+    mdt_roi = np.zeros(
+        (n_subjects, n_rois, n_hidden_states),
+        dtype=np.float64,
+    )
+
+    visits_roi = np.zeros(
+        (n_subjects, n_rois, n_hidden_states),
+        dtype=np.int64,
+    )
+
     subject_dwells = [
         [[] for _ in range(n_hidden_states)]
         for _ in range(n_subjects)
@@ -24,47 +34,40 @@ def compute_subject_level_metrics(
 
     for seq_idx, seq in enumerate(state_seqs):
 
-        subj_idx = int(
-            sequence_subject_ids[seq_idx]
-        )
-
-        roi_idx = int(
-            sequence_roi_ids[seq_idx]
-        )
+        subj_idx = int(sequence_subject_ids[seq_idx])
+        roi_idx = int(sequence_roi_ids[seq_idx])
 
         for k in range(n_hidden_states):
 
-            # ROI-level FO
-            fo_roi[subj_idx, roi_idx, k] = (
-                np.mean(seq == k)
-            )
+            # ROI-level fractional occupancy
+            fo_roi[subj_idx, roi_idx, k] = np.mean(seq == k)
 
-            # collect ROI-internal dwell episodes
-            runs = extract_dwell_times(
-                seq,
-                k,
-            )
+            # ROI-internal dwell episodes only
+            runs = extract_dwell_times(seq, k)
 
-            subject_dwells[subj_idx][k].extend(
-                runs
-            )
+            visits_roi[subj_idx, roi_idx, k] = len(runs)
 
-    # aggregate FO across ROIs
+            if len(runs) > 0:
+                mdt_roi[subj_idx, roi_idx, k] = float(
+                    np.mean(runs)
+                )
+
+                subject_dwells[subj_idx][k].extend(runs)
+
+    # Subject-level FO
+    # All ROIs have equal length in the current dataset.
     fo_subject = np.mean(
         fo_roi,
         axis=1,
     )
 
-    # aggregate dwell episodes across ROIs
+    # Subject-level MDT:
+    # pool all ROI-internal dwell episodes first
     mdt_subject = np.zeros(
         (n_subjects, n_hidden_states),
         dtype=np.float64,
     )
 
-    mdt_roi = np.zeros(
-        (n_subjects, n_rois, n_hidden_states),
-        dtype=np.float64,
-    )
     for subj_idx in range(n_subjects):
 
         for k in range(n_hidden_states):
@@ -75,16 +78,20 @@ def compute_subject_level_metrics(
                 mdt_subject[subj_idx, k] = float(
                     np.mean(runs)
                 )
-                if len(runs) > 0:
-                    mdt_roi[subj_idx, roi_idx, k] = np.mean(runs)
-            else:
-                mdt_subject[subj_idx, k] = 0.0
+
+    # Subject-level visit count
+    visits_subject = np.sum(
+        visits_roi,
+        axis=1,
+    )
 
     return {
         "FO": fo_subject,
         "MDT": mdt_subject,
+        "Visits": visits_subject,
         "FO_roi": fo_roi,
         "MDT_roi": mdt_roi,
+        "Visits_roi": visits_roi,
     }
 
 def extract_dwell_times(

@@ -59,7 +59,69 @@ def used_fraction(prob: np.ndarray) -> float:
     prob = np.asarray(prob)
     return float(np.mean(prob > 0))
 
+def effective_state_fraction(
+    FO: np.ndarray,
+    min_mean_fo: float = 0.01,
+) -> float:
+    """
+    Fraction of hidden states with meaningful occupancy.
 
+    A state is considered effective when its mean FO across
+    subjects exceeds min_mean_fo.
+    """
+    mean_fo = np.mean(
+        FO,
+        axis=0,
+    )
+
+    return float(
+        np.mean(mean_fo >= min_mean_fo)
+    )
+def non_fragmented_state_fraction(
+    MDT: np.ndarray,
+    short_mdt_threshold: float = 1.5,
+) -> float:
+    """
+    Fraction of states whose median positive MDT across subjects
+    is greater than the short-state threshold.
+
+    MDT == 0 means that the state was not visited and is excluded.
+    """
+    good_states = []
+
+    for state_idx in range(MDT.shape[1]):
+
+        values = MDT[:, state_idx]
+
+        valid = (
+            np.isfinite(values)
+            & (values > 0)
+        )
+
+        if valid.sum() == 0:
+            good_states.append(False)
+            continue
+
+        median_mdt = np.median(
+            values[valid]
+        )
+
+        good_states.append(
+            median_mdt > short_mdt_threshold
+        )
+
+    return float(
+        np.mean(good_states)
+    )
+def mean_self_transition(
+    transmat: np.ndarray,
+) -> float:
+
+    return float(
+        np.mean(
+            np.diag(transmat)
+        )
+    )
 def coefficient_of_variation(x: np.ndarray) -> float:
     x = np.asarray(x, dtype=np.float64)
     mean = np.mean(x)

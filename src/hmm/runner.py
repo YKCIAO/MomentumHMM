@@ -134,13 +134,21 @@ def run_single_hmm_task(
         "startprob_": model.startprob_,
         "transmat_": model.transmat_,
         "emissionprob_": model.emissionprob_,
+
         "state_sequence": decoded["state_sequence"],
+
         "FO": metrics["FO"],
         "MDT": metrics["MDT"],
+        "Visits": metrics["Visits"],
+
+        "FO_roi": metrics["FO_roi"],
+        "MDT_roi": metrics["MDT_roi"],
+        "Visits_roi": metrics["Visits_roi"],
+
         "lengths": lengths,
         "sequence_subject_ids": sequence_subject_ids,
         "sequence_roi_ids": sequence_roi_ids,
-        "FO_roi": metrics["FO_roi"],
+
         "subject_ids": metadata_df["ID"].astype(str).to_numpy(dtype=object),
         "subject_age": metadata_df["Age"].to_numpy(),
         "subject_gender": metadata_df["Gender"].astype(str).to_numpy(dtype=object),
@@ -174,8 +182,17 @@ def run_single_hmm_task(
         }
 
         for state_idx in range(n_hidden_states):
-            row[f"FO_state_{state_idx}"] = float(metrics["FO"][subj_idx, state_idx])
-            row[f"MDT_state_{state_idx}"] = float(metrics["MDT"][subj_idx, state_idx])
+            row[f"FO_state_{state_idx}"] = float(
+                metrics["FO"][subj_idx, state_idx]
+            )
+
+            row[f"MDT_state_{state_idx}"] = float(
+                metrics["MDT"][subj_idx, state_idx]
+            )
+
+            row[f"Visits_state_{state_idx}"] = int(
+                metrics["Visits"][subj_idx, state_idx]
+            )
 
         subject_rows.append(row)
 

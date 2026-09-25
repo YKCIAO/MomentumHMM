@@ -6,7 +6,9 @@ import numpy as np
 from scipy.stats import pearsonr
 
 from src.evaluation.state_metrics import (
-    mean_subject_stability,
+    effective_state_fraction,
+    mean_self_transition,
+    non_fragmented_state_fraction,
     normalize_entropy,
     observation_usage_from_sequence,
     safe_entropy,
@@ -24,28 +26,61 @@ def compute_run_metrics(
     MDT: np.ndarray,
     n_hidden_states: int,
     n_categories: int = 9,
+    min_state_fo: float = 0.01,
+    short_mdt_threshold: float = 1.5,
 ) -> Dict[str, float]:
-    state_usage = state_usage_from_sequence(state_sequence, n_hidden_states)
-    obs_usage = observation_usage_from_sequence(obs, n_categories)
+
+    state_usage = state_usage_from_sequence(
+        state_sequence,
+        n_hidden_states,
+    )
+
+    obs_usage = observation_usage_from_sequence(
+        obs,
+        n_categories,
+    )
 
     state_usage_entropy = normalize_entropy(
         safe_entropy(state_usage),
         n_hidden_states,
     )
+
     observation_entropy = normalize_entropy(
         safe_entropy(obs_usage),
         n_categories,
     )
 
     metrics = {
+        # Main quality measures
         "state_usage_entropy": state_usage_entropy,
-        "transition_entropy": transition_entropy(transmat),
-        "fo_stability": mean_subject_stability(FO),
-        "mdt_stability": mean_subject_stability(MDT),
+
         "observation_entropy": observation_entropy,
-        "used_state_fraction": used_fraction(state_usage),
-        "used_observation_fraction": used_fraction(obs_usage),
+
+        "used_observation_fraction": used_fraction(
+            obs_usage
+        ),
+
+        "effective_state_fraction": effective_state_fraction(
+            FO,
+            min_mean_fo=min_state_fo,
+        ),
+
+        "non_fragmented_state_fraction":
+            non_fragmented_state_fraction(
+                MDT,
+                short_mdt_threshold=short_mdt_threshold,
+            ),
+
+        # Diagnostics
+        "transition_entropy": transition_entropy(
+            transmat
+        ),
+
+        "mean_self_transition": mean_self_transition(
+            transmat
+        ),
     }
+
     return metrics
 
 def compute_age_relevance_score(

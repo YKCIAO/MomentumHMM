@@ -53,6 +53,9 @@ def score_all_hmm_runs(cfg: ExperimentConfig) -> None:
             MDT=MDT,
             n_hidden_states=n_hidden_states,
             n_categories=9,
+
+            min_state_fo=cfg.score.min_state_fo,
+            short_mdt_threshold=cfg.score.short_mdt_threshold,
         )
         age = hmm_data["subject_age"]
         age_score, age_details = compute_age_relevance_score(
