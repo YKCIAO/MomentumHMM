@@ -18,3 +18,4 @@ logs/
 *.h5
 *.pkl
 *.joblib
+*.zip
