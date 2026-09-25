@@ -13,7 +13,7 @@ from src.symbolic.encoding import pair_to_fixed_category
 from src.symbolic.sequence_builder import flatten_subject_roi_as_observation_sequence
 from src.symbolic.thresholding import trinarize
 from src.utils.io_utils import ensure_dir, save_json, save_npz
-from src.utils.validation import ensure_3d, validate_alpha_beta, validate_threshold
+from src.utils.validation import ensure_3d, validate_threshold
 
 
 def build_symbolic_representation(

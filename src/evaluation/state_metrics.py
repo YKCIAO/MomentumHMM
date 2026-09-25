@@ -122,29 +122,7 @@ def mean_self_transition(
             np.diag(transmat)
         )
     )
-def coefficient_of_variation(x: np.ndarray) -> float:
-    x = np.asarray(x, dtype=np.float64)
-    mean = np.mean(x)
-    std = np.std(x, ddof=0)
-    if abs(mean) < 1e-12:
-        return float(std)
-    return float(std / abs(mean))
 
 
-def inverse_cv_score(x: np.ndarray) -> float:
-    """
-    Higher is better. Bounded in (0,1].
-    """
-    cv = coefficient_of_variation(x)
-    return float(1.0 / (1.0 + cv))
 
 
-def mean_subject_stability(matrix: np.ndarray) -> float:
-    """
-    matrix shape: [subjects, features]
-    Compute per-feature inverse CV, then average.
-    """
-    scores = []
-    for j in range(matrix.shape[1]):
-        scores.append(inverse_cv_score(matrix[:, j]))
-    return float(np.mean(scores))
