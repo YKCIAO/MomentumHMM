@@ -1,3 +1,4 @@
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -587,19 +588,104 @@ def compute_state_roi_mapping(
         rows
     )
 
+    # ========================================================
+    # Composite ROI score
+    # ========================================================
+
+    def minmax_within_state(values: pd.Series) -> pd.Series:
+        """
+        Min-max normalize one ROI metric within each state.
+
+        If all ROIs have the same value, return 1.0 for all ROIs
+        so that the metric does not introduce artificial differences.
+        """
+        values = values.astype(float)
+
+        vmin = values.min()
+        vmax = values.max()
+
+        if np.isclose(vmax, vmin):
+            return pd.Series(
+                np.ones(len(values), dtype=np.float64),
+                index=values.index,
+            )
+
+        return (values - vmin) / (vmax - vmin)
+
+    # Normalize within each state because the goal is to rank ROIs
+    # separately for each latent state.
+    full_df["occupancy_norm"] = (
+        full_df
+        .groupby("state")["state_roi_occupancy"]
+        .transform(minmax_within_state)
+    )
+
+    full_df["deviation_norm"] = (
+        full_df
+        .groupby("state")["mean_abs_deviation"]
+        .transform(minmax_within_state)
+    )
+
+    full_df["momentum_norm"] = (
+        full_df
+        .groupby("state")["mean_abs_momentum"]
+        .transform(minmax_within_state)
+    )
+
+    # Composite regional-expression score.
+    occupancy_weight = 0.40
+    deviation_weight = 0.30
+    momentum_weight = 0.30
+
+    full_df["composite_score"] = (
+        occupancy_weight * full_df["occupancy_norm"]
+        + deviation_weight * full_df["deviation_norm"]
+        + momentum_weight * full_df["momentum_norm"]
+    )
+
+    # ========================================================
+    # Top ROI tables
+    # ========================================================
+
+    top_composite_rows = []
     top_occupancy_rows = []
     top_deviation_rows = []
     top_momentum_rows = []
 
-    for state_idx in range(
-        n_states
-    ):
+    for state_idx in range(n_states):
 
         tmp = full_df[
-            full_df["state"]
-            == state_idx
+            full_df["state"] == state_idx
         ].copy()
 
+        # Primary result: Top ROIs with the strongest overall state expression.
+        top_composite = (
+            tmp
+            .sort_values(
+                [
+                    "composite_score",
+                    "state_roi_occupancy",
+                ],
+                ascending=[
+                    False,
+                    False,
+                ],
+            )
+            .head(top_n)
+            .copy()
+        )
+
+        top_composite.insert(
+            1,
+            "rank",
+            range(1, len(top_composite) + 1),
+        )
+
+        top_composite_rows.append(
+            top_composite
+        )
+
+        # Diagnostic tables retained for interpretation.
         top_occ = (
             tmp
             .sort_values(
@@ -615,15 +701,13 @@ def compute_state_roi_mapping(
                 ],
             )
             .head(top_n)
+            .copy()
         )
 
         top_occ.insert(
             1,
             "rank",
-            range(
-                1,
-                len(top_occ) + 1
-            ),
+            range(1, len(top_occ) + 1),
         )
 
         top_occupancy_rows.append(
@@ -643,15 +727,13 @@ def compute_state_roi_mapping(
                 ],
             )
             .head(top_n)
+            .copy()
         )
 
         top_dev.insert(
             1,
             "rank",
-            range(
-                1,
-                len(top_dev) + 1
-            ),
+            range(1, len(top_dev) + 1),
         )
 
         top_deviation_rows.append(
@@ -671,228 +753,255 @@ def compute_state_roi_mapping(
                 ],
             )
             .head(top_n)
+            .copy()
         )
 
         top_mom.insert(
             1,
             "rank",
-            range(
-                1,
-                len(top_mom) + 1
-            ),
+            range(1, len(top_mom) + 1),
         )
 
         top_momentum_rows.append(
             top_mom
         )
-        top_occupancy_df = pd.concat(
-            top_occupancy_rows,
-            ignore_index=True,
+
+    # These concatenations must be outside the state loop.
+    top_composite_df = pd.concat(
+        top_composite_rows,
+        ignore_index=True,
+    )
+
+    top_occupancy_df = pd.concat(
+        top_occupancy_rows,
+        ignore_index=True,
+    )
+
+    top_deviation_df = pd.concat(
+        top_deviation_rows,
+        ignore_index=True,
+    )
+
+    top_momentum_df = pd.concat(
+        top_momentum_rows,
+        ignore_index=True,
+    )
+
+    # ========================================================
+    # Network / gyrus summaries
+    # ========================================================
+
+    network_summary = (
+        full_df
+        .groupby(
+            [
+                "state",
+                "Yeo_7network",
+                "Yeo_7network_name",
+            ],
+            dropna=False,
+            as_index=False,
+        )
+        .agg(
+            mean_state_roi_occupancy=(
+                "state_roi_occupancy",
+                "mean",
+            ),
+            max_state_roi_occupancy=(
+                "state_roi_occupancy",
+                "max",
+            ),
+            mean_abs_deviation=(
+                "mean_abs_deviation",
+                "mean",
+            ),
+            mean_abs_momentum=(
+                "mean_abs_momentum",
+                "mean",
+            ),
+            mean_composite_score=(
+                "composite_score",
+                "mean",
+            ),
+            max_composite_score=(
+                "composite_score",
+                "max",
+            ),
+            n_rois=(
+                "roi_index",
+                "count",
+            ),
+        )
+        .sort_values(
+            [
+                "state",
+                "mean_composite_score",
+            ],
+            ascending=[
+                True,
+                False,
+            ],
+        )
+    )
+
+    gyrus_summary = (
+        full_df
+        .groupby(
+            [
+                "state",
+                "Gyrus",
+            ],
+            dropna=False,
+            as_index=False,
+        )
+        .agg(
+            mean_state_roi_occupancy=(
+                "state_roi_occupancy",
+                "mean",
+            ),
+            max_state_roi_occupancy=(
+                "state_roi_occupancy",
+                "max",
+            ),
+            mean_abs_deviation=(
+                "mean_abs_deviation",
+                "mean",
+            ),
+            mean_abs_momentum=(
+                "mean_abs_momentum",
+                "mean",
+            ),
+            mean_composite_score=(
+                "composite_score",
+                "mean",
+            ),
+            max_composite_score=(
+                "composite_score",
+                "max",
+            ),
+            n_rois=(
+                "roi_index",
+                "count",
+            ),
+        )
+        .sort_values(
+            [
+                "state",
+                "mean_composite_score",
+            ],
+            ascending=[
+                True,
+                False,
+            ],
+        )
+    )
+
+    # ========================================================
+    # Output
+    # ========================================================
+
+    output_dir = ensure_dir(
+        hmm_dir / "state_roi_mapping"
+    )
+
+    excel_path = (
+        output_dir
+        / "state_roi_mapping.xlsx"
+    )
+
+    full_df.to_csv(
+        output_dir / "state_roi_mapping_full.csv",
+        index=False,
+    )
+
+    top_composite_df.to_csv(
+        output_dir / "top_composite_rois_per_state.csv",
+        index=False,
+    )
+
+    with pd.ExcelWriter(
+        excel_path,
+        engine="openpyxl",
+    ) as writer:
+
+        full_df.to_excel(
+            writer,
+            sheet_name="FullMapping",
+            index=False,
         )
 
-        top_deviation_df = pd.concat(
-            top_deviation_rows,
-            ignore_index=True,
+        # Main human-readable result.
+        top_composite_df.to_excel(
+            writer,
+            sheet_name="TopCompositeROI",
+            index=False,
         )
 
-        top_momentum_df = pd.concat(
-            top_momentum_rows,
-            ignore_index=True,
-        )
-        network_summary = (
-            full_df
-            .groupby(
-                [
-                    "state",
-                    "Yeo_7network",
-                    "Yeo_7network_name",
-                ],
-                dropna=False,
-                as_index=False,
-            )
-            .agg(
-                mean_state_roi_occupancy=(
-                    "state_roi_occupancy",
-                    "mean",
-                ),
-
-                max_state_roi_occupancy=(
-                    "state_roi_occupancy",
-                    "max",
-                ),
-
-                mean_abs_deviation=(
-                    "mean_abs_deviation",
-                    "mean",
-                ),
-
-                mean_abs_momentum=(
-                    "mean_abs_momentum",
-                    "mean",
-                ),
-
-                n_rois=(
-                    "roi_index",
-                    "count",
-                ),
-            )
-            .sort_values(
-                [
-                    "state",
-                    "mean_state_roi_occupancy",
-                ],
-                ascending=[
-                    True,
-                    False,
-                ],
-            )
-        )
-        gyrus_summary = (
-            full_df
-            .groupby(
-                [
-                    "state",
-                    "Gyrus",
-                ],
-                dropna=False,
-                as_index=False,
-            )
-            .agg(
-                mean_state_roi_occupancy=(
-                    "state_roi_occupancy",
-                    "mean",
-                ),
-
-                max_state_roi_occupancy=(
-                    "state_roi_occupancy",
-                    "max",
-                ),
-
-                mean_abs_deviation=(
-                    "mean_abs_deviation",
-                    "mean",
-                ),
-
-                mean_abs_momentum=(
-                    "mean_abs_momentum",
-                    "mean",
-                ),
-
-                n_rois=(
-                    "roi_index",
-                    "count",
-                ),
-            )
-            .sort_values(
-                [
-                    "state",
-                    "mean_state_roi_occupancy",
-                ],
-                ascending=[
-                    True,
-                    False,
-                ],
-            )
-        )
-        output_dir = ensure_dir(
-            hmm_dir
-            / "state_roi_mapping"
+        top_occupancy_df.to_excel(
+            writer,
+            sheet_name="TopOccupancy",
+            index=False,
         )
 
-        excel_path = (
-                output_dir
-                / "state_roi_mapping.xlsx"
+        top_deviation_df.to_excel(
+            writer,
+            sheet_name="TopDeviation",
+            index=False,
         )
 
-        with pd.ExcelWriter(
-                excel_path,
-                engine="openpyxl",
-        ) as writer:
+        top_momentum_df.to_excel(
+            writer,
+            sheet_name="TopMomentum",
+            index=False,
+        )
 
-            full_df.to_excel(
-                writer,
-                sheet_name="FullMapping",
-                index=False,
-            )
+        network_summary.to_excel(
+            writer,
+            sheet_name="Yeo7Summary",
+            index=False,
+        )
 
-            top_occupancy_df.to_excel(
-                writer,
-                sheet_name="TopOccupancy",
-                index=False,
-            )
+        gyrus_summary.to_excel(
+            writer,
+            sheet_name="GyrusSummary",
+            index=False,
+        )
 
-            top_deviation_df.to_excel(
-                writer,
-                sheet_name="TopDeviation",
-                index=False,
-            )
+        for ws in writer.book.worksheets:
 
-            top_momentum_df.to_excel(
-                writer,
-                sheet_name="TopMomentum",
-                index=False,
-            )
+            ws.freeze_panes = "A2"
+            ws.auto_filter.ref = ws.dimensions
 
-            network_summary.to_excel(
-                writer,
-                sheet_name="Yeo7Summary",
-                index=False,
-            )
+            for column_cells in ws.columns:
 
-            gyrus_summary.to_excel(
-                writer,
-                sheet_name="GyrusSummary",
-                index=False,
-            )
-
-            for ws in writer.book.worksheets:
-
-                ws.freeze_panes = "A2"
-
-                ws.auto_filter.ref = (
-                    ws.dimensions
+                max_length = max(
+                    (
+                        len(str(cell.value))
+                        if cell.value is not None
+                        else 0
+                    )
+                    for cell in column_cells
                 )
 
-                for column_cells in ws.columns:
-                    max_length = max(
-                        (
-                            len(
-                                str(
-                                    cell.value
-                                )
-                            )
-                            if cell.value
-                               is not None
-                            else 0
-                        )
-                        for cell
-                        in column_cells
-                    )
+                letter = (
+                    column_cells[0].column_letter
+                )
 
-                    letter = (
-                        column_cells[
-                            0
-                        ].column_letter
-                    )
+                ws.column_dimensions[
+                    letter
+                ].width = min(
+                    max_length + 2,
+                    30,
+                )
 
-                    ws.column_dimensions[
-                        letter
-                    ].width = min(
-                        max_length + 2,
-                        30,
-                    )
-        return {
-            "full": full_df,
-            "top_occupancy":
-                top_occupancy_df,
-            "top_deviation":
-                top_deviation_df,
-            "top_momentum":
-                top_momentum_df,
-            "network_summary":
-                network_summary,
-            "gyrus_summary":
-                gyrus_summary,
-            "excel_path":
-                excel_path,
-        }
+    return {
+        "full": full_df,
+        "top_composite": top_composite_df,
+        "top_occupancy": top_occupancy_df,
+        "top_deviation": top_deviation_df,
+        "top_momentum": top_momentum_df,
+        "network_summary": network_summary,
+        "gyrus_summary": gyrus_summary,
+        "excel_path": excel_path,
+    }
+
