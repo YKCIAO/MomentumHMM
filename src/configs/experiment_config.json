@@ -6,7 +6,8 @@
     "score_output_root": "../outputs/score_results",
     "figure_output_root": "../outputs/figures",
     "metadata_csv": "../data/BN278_OASIS3_hc/metadata.csv",
-    "dataset_npz": "../data/BN278_OASIS3_hc/dataset.npz"
+    "dataset_npz": "../data/BN278_OASIS3_hc/dataset.npz",
+    "roi_mapping_xlsx": "../data/Mapping.xlsx"
   },
   "preprocess": {
     "standardize_method": "zscore",
