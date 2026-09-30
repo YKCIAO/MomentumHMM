@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-
+import pandas as pd
 import numpy as np
 
 from src.config import ExperimentConfig
@@ -11,7 +11,7 @@ from src.evaluation.score import (
     minmax_normalize_metric_table,
     weighted_score,
 )
-from src.utils.io_utils import ensure_dir, load_npz, save_json
+from src.utils.io_utils import ensure_dir, load_npz, save_json, save_score_excel
 
 
 def score_all_hmm_runs(cfg: ExperimentConfig) -> None:
@@ -43,6 +43,16 @@ def score_all_hmm_runs(cfg: ExperimentConfig) -> None:
         symbolic_data = load_npz(symbolic_dir / "hmm_ready_sequence.npz")
         obs = symbolic_data["obs"]
 
+        parts = symbolic_source_dir.split("__")
+
+        deviation_threshold = float(
+            parts[0].replace("dev_", "")
+        )
+
+        momentum_threshold = float(
+            parts[1].replace("mom_", "")
+        )
+
         n_hidden_states = transmat.shape[0]
 
         metrics = compute_run_metrics(
@@ -67,7 +77,11 @@ def score_all_hmm_runs(cfg: ExperimentConfig) -> None:
         run_info = {
             "run_dir": str(run_dir),
             "symbolic_dir": str(symbolic_dir),
+
+            "deviation_threshold": deviation_threshold,
+            "momentum_threshold": momentum_threshold,
             "n_hidden_states": int(n_hidden_states),
+
             "age_score": float(age_score),
             "age_details": age_details,
         }
@@ -89,9 +103,20 @@ def score_all_hmm_runs(cfg: ExperimentConfig) -> None:
             metric_rows,
             metric_rows_for_scoring,
     ):
-        quality_score = weighted_score(
+        quality_score_base = weighted_score(
             norm_metrics,
             cfg.score.weights,
+        )
+
+        # Effective-state fraction is treated as a guardrail
+        # rather than a continuously rewarded quality metric.
+        effective_fraction = raw_metrics[
+            "effective_state_fraction"
+        ]
+
+        quality_score = (
+                quality_score_base
+                * effective_fraction
         )
 
         age_score = run_info["age_score"]
@@ -116,3 +141,7 @@ def score_all_hmm_runs(cfg: ExperimentConfig) -> None:
     scored_runs = sorted(scored_runs, key=lambda x: x["final_score"], reverse=True)
 
     save_json(score_root / "score_ranking.json", {"runs": scored_runs})
+    save_score_excel(
+        scored_runs=scored_runs,
+        output_path=score_root / "score_ranking.xlsx",
+    )
