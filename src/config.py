@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Literal, Dict
+from typing import Dict, List, Literal
 
 
 @dataclass
@@ -15,8 +15,8 @@ class PathConfig:
     figure_output_root: str
     metadata_csv: str
     dataset_npz: str
-    dataset_npz: str
     roi_mapping_xlsx: str
+
 
 @dataclass
 class PreprocessConfig:
@@ -25,6 +25,13 @@ class PreprocessConfig:
     smooth_window: int
     center_diff_on_diff_series: bool
     fill_first_diff: Literal["zero", "repeat"]
+
+    # Optional temporal harmonization branch.
+    # Applied BEFORE smoothing and standardization.
+    downsample: bool = False
+    source_tr_seconds: float = 2.0
+    target_tr_seconds: float = 2.0
+    resample_max_denominator: int = 1000
 
 
 @dataclass
@@ -41,6 +48,7 @@ class HMMConfig:
     random_state: int
     verbose: bool
 
+
 @dataclass
 class ScoreConfig:
     weights: Dict[str, float]
@@ -53,6 +61,7 @@ class ScoreConfig:
     min_state_fo: float
     short_mdt_threshold: float
 
+
 @dataclass
 class VisualizationConfig:
     dpi: int
@@ -64,6 +73,7 @@ class VisualizationConfig:
     save_fo_bar: bool
     save_mdt_bar: bool
     save_score_bar: bool
+
 
 @dataclass
 class ExperimentConfig:
