@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 from dataclasses import asdict
-from pathlib import Path
 
 import numpy as np
 
 from src.config import ExperimentConfig
 from src.preprocessing.differencing import first_difference
+from src.preprocessing.downsampling import resample_timeseries
 from src.preprocessing.smoothing import smooth_timeseries
 from src.preprocessing.standardization import standardize_timeseries
 from src.symbolic.encoding import pair_to_fixed_category
@@ -25,11 +25,29 @@ def build_symbolic_representation(
     fill_first_diff: str,
     deviation_threshold: float,
     momentum_threshold: float,
+    downsample: bool = False,
+    source_tr_seconds: float = 2.0,
+    target_tr_seconds: float = 2.0,
+    resample_max_denominator: int = 1000,
 ) -> dict:
     validate_threshold(deviation_threshold)
     validate_threshold(momentum_threshold)
 
     x = ensure_3d(data)
+    n_timepoints_input = int(x.shape[-1])
+
+    # Temporal harmonization is intentionally independent of smoothing.
+    # If enabled, it is applied first so both datasets enter the remaining
+    # preprocessing steps at the same physical sampling interval.
+    if downsample:
+        x = resample_timeseries(
+            x,
+            source_tr_seconds=source_tr_seconds,
+            target_tr_seconds=target_tr_seconds,
+            max_denominator=resample_max_denominator,
+        )
+
+    n_timepoints_after_resampling = int(x.shape[-1])
 
     if smooth:
         x = smooth_timeseries(x, smooth_window)
@@ -77,6 +95,8 @@ def build_symbolic_representation(
         "lengths": lengths,
         "sequence_subject_ids": sequence_subject_ids,
         "sequence_roi_ids": sequence_roi_ids,
+        "n_timepoints_input": n_timepoints_input,
+        "n_timepoints_after_resampling": n_timepoints_after_resampling,
     }
 
 
@@ -107,6 +127,10 @@ def exhaustive_symbolic_search(
                 fill_first_diff=cfg.preprocess.fill_first_diff,
                 deviation_threshold=deviation_threshold,
                 momentum_threshold=momentum_threshold,
+                downsample=cfg.preprocess.downsample,
+                source_tr_seconds=cfg.preprocess.source_tr_seconds,
+                target_tr_seconds=cfg.preprocess.target_tr_seconds,
+                resample_max_denominator=cfg.preprocess.resample_max_denominator,
             )
 
             save_npz(
@@ -126,8 +150,21 @@ def exhaustive_symbolic_search(
                 sequence_roi_ids=result["sequence_roi_ids"],
             )
 
+            effective_tr_seconds = (
+                cfg.preprocess.target_tr_seconds
+                if cfg.preprocess.downsample
+                else cfg.preprocess.source_tr_seconds
+            )
+
             meta = {
                 "preprocess": asdict(cfg.preprocess),
+                "temporal_sampling": {
+                    "n_timepoints_input": result["n_timepoints_input"],
+                    "n_timepoints_after_resampling": result[
+                        "n_timepoints_after_resampling"
+                    ],
+                    "effective_tr_seconds": effective_tr_seconds,
+                },
                 "symbolic": {
                     "category_mode": "deviation_momentum_pair_index",
                     "deviation_threshold": deviation_threshold,
@@ -145,6 +182,11 @@ def exhaustive_symbolic_search(
                     "output_dir": str(out_dir),
                     "deviation_threshold": deviation_threshold,
                     "momentum_threshold": momentum_threshold,
+                    "n_timepoints_input": result["n_timepoints_input"],
+                    "n_timepoints_after_resampling": result[
+                        "n_timepoints_after_resampling"
+                    ],
+                    "effective_tr_seconds": effective_tr_seconds,
                 }
             )
 
