@@ -392,6 +392,24 @@ def run_single_gaussian_hmm_task(
         index=False,
     )
 
+    # Export Gaussian state means in a human-readable table.
+    # For whole_brain layout, columns correspond to ROI_0 ... ROI_(R-1).
+    # For subject_roi layout, columns are the continuous observation features.
+    state_mean_columns = feature_names
+    state_means_df = pd.DataFrame(
+        model.means_,
+        columns=state_mean_columns,
+    )
+    state_means_df.insert(
+        0,
+        "state",
+        np.arange(n_hidden_states, dtype=int),
+    )
+    state_means_df.to_csv(
+        out_dir / "state_gaussian_means.csv",
+        index=False,
+    )
+
     save_json(
         out_dir / "hmm_meta.json",
         {
