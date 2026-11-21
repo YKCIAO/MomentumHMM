@@ -20,7 +20,7 @@ def main():
     log_step("Step 2/2: Running Gaussian HMM baseline")
     fit_all_gaussian_hmm_runs_parallel(
         cfg,
-        max_workers=3,
+        max_workers=1,
         save_posterior=True,
     )
 
