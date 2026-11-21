@@ -53,6 +53,10 @@ class HMMConfig:
 class GaussianHMMConfig:
     enabled: bool = False
     output_subdir: str = "gaussian_hmm_results"
+    sequence_layout: Literal[
+        "subject_roi",
+        "whole_brain",
+    ] = "subject_roi"
     observation_mode: Literal[
         "deviation",
         "momentum",
