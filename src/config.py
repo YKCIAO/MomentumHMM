@@ -50,6 +50,23 @@ class HMMConfig:
 
 
 @dataclass
+class GaussianHMMConfig:
+    enabled: bool = False
+    output_subdir: str = "gaussian_hmm_results"
+    observation_mode: Literal[
+        "deviation",
+        "momentum",
+        "deviation_momentum",
+    ] = "deviation_momentum"
+    covariance_type: Literal["diag", "full", "spherical", "tied"] = "diag"
+    min_covar: float = 1e-3
+    n_iter: int = 200
+    tol: float = 0.0001
+    random_state: int = 188
+    verbose: bool = False
+
+
+@dataclass
 class ScoreConfig:
     weights: Dict[str, float]
     normalize_scores_across_runs: bool
@@ -81,6 +98,7 @@ class ExperimentConfig:
     preprocess: PreprocessConfig
     symbolic: SymbolicConfig
     hmm: HMMConfig
+    gaussian_hmm: GaussianHMMConfig
     score: ScoreConfig
     visualization: VisualizationConfig
 
@@ -95,6 +113,7 @@ def load_experiment_config(config_path: str | Path) -> ExperimentConfig:
         preprocess=PreprocessConfig(**raw["preprocess"]),
         symbolic=SymbolicConfig(**raw["symbolic"]),
         hmm=HMMConfig(**raw["hmm"]),
+        gaussian_hmm=GaussianHMMConfig(**raw.get("gaussian_hmm", {})),
         score=ScoreConfig(**raw["score"]),
         visualization=VisualizationConfig(**raw["visualization"]),
     )
