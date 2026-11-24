@@ -26,7 +26,7 @@ def log_step(message: str) -> None:
     print(f"[{now}] {message}", flush=True)
 
 
-def _preprocess_continuous_data(
+def preprocess_continuous_data(
     data: np.ndarray,
     cfg: ExperimentConfig,
 ) -> tuple[np.ndarray, np.ndarray, dict]:
@@ -92,7 +92,7 @@ def build_gaussian_observations(
         and all ROIs form a multivariate observation vector at each time point.
         For this layout, observation_mode must be "deviation".
     """
-    x_std, dx_std, temporal_meta = _preprocess_continuous_data(
+    x_std, dx_std, temporal_meta = preprocess_continuous_data(
         data,
         cfg,
     )
