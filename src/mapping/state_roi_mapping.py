@@ -6,7 +6,8 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from src.utils.io_utils import ensure_dir, load_npz
+from src.hmm.gaussian_runner import preprocess_continuous_data
+from src.utils.io_utils import ensure_dir, load_npy, load_npz
 
 def load_roi_mapping(
     n_rois: int,
@@ -162,83 +163,107 @@ def reconstruct_state_array(
 
 def compute_state_roi_mapping(
     cfg,
-    symbolic_run_name: str,
+    run_dir: Path,
     k_value: int,
+    model_family: str = "categorical",
     top_n: int = 15,
 ):
-
-    symbolic_dir = (
-        Path(
-            cfg.paths.symbolic_output_root
-        )
-        / symbolic_run_name
-    )
-
-    hmm_dir = (
-        Path(
-            cfg.paths.hmm_output_root
-        )
-        / symbolic_run_name
-        / f"K_{k_value}"
-    )
-
-    symbolic_path = (
-        symbolic_dir
-        / "symbolic_outputs.npz"
-    )
-
-    sequence_path = (
-        symbolic_dir
-        / "hmm_ready_sequence.npz"
-    )
-
-    hmm_path = (
-        hmm_dir
-        / "hmm_results.npz"
-    )
-
-    if not symbolic_path.exists():
-        raise FileNotFoundError(
-            symbolic_path
-        )
-
-    if not sequence_path.exists():
-        raise FileNotFoundError(
-            sequence_path
-        )
+    run_dir = Path(run_dir)
+    hmm_dir = run_dir
+    hmm_path = hmm_dir / "hmm_results.npz"
 
     if not hmm_path.exists():
-        raise FileNotFoundError(
-            hmm_path
+        raise FileNotFoundError(hmm_path)
+
+    hmm = load_npz(hmm_path)
+
+    if model_family == "categorical":
+        symbolic_run_name = run_dir.parent.name
+
+        symbolic_dir = (
+            Path(cfg.paths.symbolic_output_root)
+            / symbolic_run_name
         )
 
-    symbolic = load_npz(
-        symbolic_path
-    )
+        symbolic_path = (
+            symbolic_dir
+            / "symbolic_outputs.npz"
+        )
+        sequence_path = (
+            symbolic_dir
+            / "hmm_ready_sequence.npz"
+        )
 
-    sequence = load_npz(
-        sequence_path
-    )
+        if not symbolic_path.exists():
+            raise FileNotFoundError(symbolic_path)
+        if not sequence_path.exists():
+            raise FileNotFoundError(sequence_path)
 
-    hmm = load_npz(
-        hmm_path
-    )
+        symbolic = load_npz(symbolic_path)
+        sequence = load_npz(sequence_path)
 
-    x_std = np.asarray(
-        symbolic["x_std"]
-    )
+        x_std = np.asarray(
+            symbolic["x_std"]
+        )
+        dx_std = np.asarray(
+            symbolic["dx_std"]
+        )
+        deviation_code = np.asarray(
+            symbolic["deviation_code"]
+        )
+        momentum_code = np.asarray(
+            symbolic["momentum_code"]
+        )
 
-    dx_std = np.asarray(
-        symbolic["dx_std"]
-    )
+        lengths = sequence["lengths"]
+        sequence_subject_ids = (
+            sequence["sequence_subject_ids"]
+        )
+        sequence_roi_ids = (
+            sequence["sequence_roi_ids"]
+        )
 
-    deviation_code = np.asarray(
-        symbolic["deviation_code"]
-    )
+    elif model_family == "gaussian":
+        if cfg.gaussian_hmm.sequence_layout != "subject_roi":
+            raise ValueError(
+                "State-to-ROI mapping with the current regional "
+                "definition is only valid for Gaussian HMM "
+                "sequence_layout='subject_roi'."
+            )
 
-    momentum_code = np.asarray(
-        symbolic["momentum_code"]
-    )
+        raw_data = load_npy(
+            cfg.paths.input_data
+        )
+        x_std, dx_std, _ = preprocess_continuous_data(
+            raw_data,
+            cfg,
+        )
+
+        lengths = hmm["lengths"]
+        sequence_subject_ids = (
+            hmm["sequence_subject_ids"]
+        )
+
+        if "sequence_roi_ids" not in hmm:
+            raise KeyError(
+                "Gaussian subject_roi result is missing "
+                "sequence_roi_ids."
+            )
+
+        sequence_roi_ids = (
+            hmm["sequence_roi_ids"]
+        )
+
+        # Gaussian HMM operates on continuous observations.
+        # Threshold-derived categorical ratios are therefore
+        # intentionally left undefined rather than fabricated.
+        deviation_code = None
+        momentum_code = None
+
+    else:
+        raise ValueError(
+            f"Unsupported model_family: {model_family}"
+        )
 
     (
         n_subjects,
@@ -250,20 +275,6 @@ def compute_state_roi_mapping(
         raise ValueError(
             "dx_std and x_std shape mismatch."
         )
-
-    lengths = sequence["lengths"]
-
-    sequence_subject_ids = (
-        sequence[
-            "sequence_subject_ids"
-        ]
-    )
-
-    sequence_roi_ids = (
-        sequence[
-            "sequence_roi_ids"
-        ]
-    )
 
     state_sequence = np.asarray(
         hmm["state_sequence"]
@@ -343,21 +354,24 @@ def compute_state_roi_mapping(
                 ][mask]
             )
 
-            deviation_codes = (
-                deviation_code[
-                    :,
-                    roi_idx,
-                    :
-                ][mask]
-            )
-
-            momentum_codes = (
-                momentum_code[
-                    :,
-                    roi_idx,
-                    :
-                ][mask]
-            )
+            if deviation_code is not None:
+                deviation_codes = (
+                    deviation_code[
+                        :,
+                        roi_idx,
+                        :
+                    ][mask]
+                )
+                momentum_codes = (
+                    momentum_code[
+                        :,
+                        roi_idx,
+                        :
+                    ][mask]
+                )
+            else:
+                deviation_codes = None
+                momentum_codes = None
 
             if n_points > 0:
 
@@ -401,41 +415,33 @@ def compute_state_roi_mapping(
                     )
                 )
 
-                positive_deviation_ratio = float(
-                    np.mean(
-                        deviation_codes == 1
+                if deviation_codes is not None:
+                    positive_deviation_ratio = float(
+                        np.mean(deviation_codes == 1)
                     )
-                )
+                    negative_deviation_ratio = float(
+                        np.mean(deviation_codes == -1)
+                    )
+                    neutral_deviation_ratio = float(
+                        np.mean(deviation_codes == 0)
+                    )
 
-                negative_deviation_ratio = float(
-                    np.mean(
-                        deviation_codes == -1
+                    positive_momentum_ratio = float(
+                        np.mean(momentum_codes == 1)
                     )
-                )
-
-                neutral_deviation_ratio = float(
-                    np.mean(
-                        deviation_codes == 0
+                    negative_momentum_ratio = float(
+                        np.mean(momentum_codes == -1)
                     )
-                )
-
-                positive_momentum_ratio = float(
-                    np.mean(
-                        momentum_codes == 1
+                    neutral_momentum_ratio = float(
+                        np.mean(momentum_codes == 0)
                     )
-                )
-
-                negative_momentum_ratio = float(
-                    np.mean(
-                        momentum_codes == -1
-                    )
-                )
-
-                neutral_momentum_ratio = float(
-                    np.mean(
-                        momentum_codes == 0
-                    )
-                )
+                else:
+                    positive_deviation_ratio = np.nan
+                    negative_deviation_ratio = np.nan
+                    neutral_deviation_ratio = np.nan
+                    positive_momentum_ratio = np.nan
+                    negative_momentum_ratio = np.nan
+                    neutral_momentum_ratio = np.nan
 
             else:
 
