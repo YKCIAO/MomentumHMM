@@ -19,13 +19,13 @@ from src.evaluation.state_metrics import (
 
 
 def compute_run_metrics(
-    obs: np.ndarray,
+    obs: np.ndarray | None,
     state_sequence: np.ndarray,
     transmat: np.ndarray,
     FO: np.ndarray,
     MDT: np.ndarray,
     n_hidden_states: int,
-    n_categories: int = 9,
+    n_categories: int | None = 9,
     min_state_fo: float = 0.01,
     short_mdt_threshold: float = 1.5,
 ) -> Dict[str, float]:
@@ -35,30 +35,21 @@ def compute_run_metrics(
         n_hidden_states,
     )
 
-    obs_usage = observation_usage_from_sequence(
-        obs,
-        n_categories,
-    )
+    obs_usage = None
+    if obs is not None and n_categories is not None:
+        obs_usage = observation_usage_from_sequence(
+            obs,
+            n_categories,
+        )
 
     state_usage_entropy = normalize_entropy(
         safe_entropy(state_usage),
         n_hidden_states,
     )
 
-    observation_entropy = normalize_entropy(
-        safe_entropy(obs_usage),
-        n_categories,
-    )
-
     metrics = {
         # Main quality measures
         "state_usage_entropy": state_usage_entropy,
-
-        "observation_entropy": observation_entropy,
-
-        "used_observation_fraction": used_fraction(
-            obs_usage
-        ),
 
         "effective_state_fraction": effective_state_fraction(
             FO,
@@ -80,6 +71,15 @@ def compute_run_metrics(
             transmat
         ),
     }
+
+    if obs_usage is not None:
+        metrics["observation_entropy"] = normalize_entropy(
+            safe_entropy(obs_usage),
+            n_categories,
+        )
+        metrics["used_observation_fraction"] = used_fraction(
+            obs_usage
+        )
 
     return metrics
 
