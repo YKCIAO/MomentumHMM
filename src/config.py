@@ -81,6 +81,7 @@ class ScoreConfig:
 
     min_state_fo: float
     short_mdt_threshold: float
+    model_family: Literal["categorical", "gaussian"] = "categorical"
 
 
 @dataclass
